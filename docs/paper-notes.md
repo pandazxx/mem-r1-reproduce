@@ -24,7 +24,8 @@ Two agents, each fine-tuned with outcome-driven RL (no intermediate operation la
 ## Models & Data
 
 - Backbones: LLaMA-3.1-8B-Instruct; Qwen-2.5-Instruct at 3B / 7B / 14B.
-- Benchmark: **LoCoMo** (multi-session dialogues, ~300 turns / ~9k tokens each). Splits: **152 train / 81 val / 1307 test** QA pairs.
+- Benchmark: **LoCoMo** (multi-session dialogues, ~300 turns / ~9k tokens each). Single file `locomo10.json`, 10 conversations, 1,986 QA pairs in 5 categories (1 multi-hop, 2 temporal, 3 open-domain, 4 single-hop, 5 adversarial).
+- Splits: paper quote — *"we exclude the adversarial subset and use a 1:1:8 train/validation/test split (152/81/1307 questions)"*. Checks out exactly: 1986 − 446 adversarial = 1540 = 152+81+1307. The exact partition is not published; we use a seeded shuffle (`make_splits`, seed 42).
 - GPT-4o-mini bootstraps the initial temporal memory bank.
 - Also evaluated on MSC and LongMemEval.
 - LoCoMo data: https://snap-research.github.io/locomo/
