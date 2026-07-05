@@ -9,8 +9,8 @@ Budget-first reproduction of Memory-R1 (see [paper-notes.md](paper-notes.md)). G
 | RL framework | TRL GRPOTrainer first, verl for faithful runs | TRL+LoRA validates the pipeline on 1 GPU cheaply; the paper used verl, so faithful runs migrate there |
 | Primary backbone | Qwen2.5-3B-Instruct | Paper's smallest backbone; single-GPU friendly |
 | Scale-up backbone | LLaMA-3.1-8B-Instruct | Paper's headline results table |
-| Judge & memory bootstrap | GPT-4o-mini | Matches paper; cheap |
-| Retrieval | Sentence-transformer embeddings + cosine similarity (Mem0-style) | Matches paper's RAG setup |
+| API LLM provider | NVIDIA NIM free tier default; OpenAI GPT-4o-mini fallback | NIM is $0 (~40 RPM) for bootstrap/judge/baseline inference; GPT-4o-mini reserved for the final paper-comparable judge run |
+| Retrieval | API embeddings + cosine similarity (Mem0-style): `baai/bge-m3` on NIM, `text-embedding-3-small` on OpenAI | Paper names no embedding model; Mem0-style RAG |
 | Cloud | RunPod first; scripts provider-agnostic (Docker + bash) | Cheapest reliable A6000/A100 spot capacity |
 | Tooling | Python 3.11+, uv, ruff, pytest | Simple, fast |
 
@@ -26,7 +26,7 @@ Repo scaffolding, Claude agent config, paper notes, plan.
 - Embedding retrieval over the bank (top-k, ~60 candidates for answering).
 
 ### M2 — Frozen baseline (no RL)
-- Prompted (untrained) Memory Manager + Answer Agent with Qwen2.5-3B via vLLM.
+- Prompted (untrained) Memory Manager + Answer Agent — served free via NIM (Llama-3.1-8B / Qwen2.5 hosted endpoints), so no GPU rental needed for the baseline; vLLM self-hosting only becomes necessary in M3+ when we train weights.
 - Eval harness: F1, BLEU-1, LLM-as-a-Judge on LoCoMo test.
 - Reproduce the "vanilla" baseline row. This validates the whole eval path before any RL.
 
