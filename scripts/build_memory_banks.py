@@ -2,8 +2,12 @@
 
 Uses the default provider (NVIDIA NIM free tier; needs NVIDIA_API_KEY) or
 set MEMR1_PROVIDER=openai for the paper's GPT-4o-mini (needs OPENAI_API_KEY).
-Writes one bank per conversation to data/memory_banks/<sample_id>.json;
-existing banks are skipped so the script is resumable.
+
+Writes one bank per conversation to artifacts/memory_banks/<sample_id>.json.
+Banks are committed to the repo: they cost ~1.5h of rate-limited API calls
+to regenerate, and downstream milestones need them as stable inputs.
+Existing banks are skipped so the script is resumable; delete a bank file
+to rebuild it.
 """
 
 import sys
@@ -16,7 +20,7 @@ from memory_r1.locomo import load_locomo
 from memory_r1.providers import get_provider, make_llm
 
 DATA = Path(__file__).resolve().parents[1] / "data"
-BANKS = DATA / "memory_banks"
+BANKS = Path(__file__).resolve().parents[1] / "artifacts" / "memory_banks"
 
 
 def main() -> None:
@@ -31,7 +35,7 @@ def main() -> None:
             print(f"{conv.sample_id}: exists, skipping")
             continue
         n_turns = sum(len(s.turns) for s in conv.sessions)
-        print(f"{conv.sample_id}: extracting facts from {n_turns} turns...")
+        print(f"{conv.sample_id}: extracting facts from {n_turns} turns...", flush=True)
         bank = bootstrap_memory_bank(llm, conv)
         bank.save(dest)
         print(f"{conv.sample_id}: saved {len(bank)} memories -> {dest}")

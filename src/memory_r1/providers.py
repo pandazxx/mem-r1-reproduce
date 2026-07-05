@@ -64,7 +64,8 @@ def make_client(provider: Provider):
     api_key = os.environ.get(provider.api_key_env)
     if not api_key:
         raise RuntimeError(f"provider {provider.name!r} requires {provider.api_key_env} to be set")
-    return OpenAI(base_url=provider.base_url, api_key=api_key)
+    # generous retries: NIM free tier is ~40 RPM and long runs will hit 429s
+    return OpenAI(base_url=provider.base_url, api_key=api_key, max_retries=6)
 
 
 def make_llm(provider: Provider | None = None, model: str | None = None, client=None) -> LLMFn:
