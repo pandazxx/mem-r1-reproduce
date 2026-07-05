@@ -75,3 +75,7 @@ def test_make_embedder_uses_provider_model(monkeypatch):
     monkeypatch.delenv("MEMR1_EMBEDDING_MODEL", raising=False)
     embedder = make_embedder(NIM, client=object())
     assert embedder._model == NIM.embedding_model
+    assert embedder._input_type_param is True
+
+    embedder = make_embedder(OPENAI, client=object())
+    assert embedder._input_type_param is False

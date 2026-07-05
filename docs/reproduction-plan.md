@@ -10,7 +10,7 @@ Budget-first reproduction of Memory-R1 (see [paper-notes.md](paper-notes.md)). G
 | Primary backbone | Qwen2.5-3B-Instruct | Paper's smallest backbone; single-GPU friendly |
 | Scale-up backbone | LLaMA-3.1-8B-Instruct | Paper's headline results table |
 | API LLM provider | NVIDIA NIM free tier default; OpenAI GPT-4o-mini fallback | NIM is $0 (~40 RPM) for bootstrap/judge/baseline inference; GPT-4o-mini reserved for the final paper-comparable judge run |
-| Retrieval | API embeddings + cosine similarity (Mem0-style): `baai/bge-m3` on NIM, `text-embedding-3-small` on OpenAI | Paper names no embedding model; Mem0-style RAG |
+| Retrieval | API embeddings + cosine similarity (Mem0-style): `nvidia/nv-embedqa-e5-v5` on NIM, `text-embedding-3-small` on OpenAI | Paper names no embedding model; QA-retrieval-tuned NIM model (`baai/bge-m3` is broken on the hosted endpoint as of 2026-07) |
 | Cloud | RunPod first; scripts provider-agnostic (Docker + bash) | Cheapest reliable A6000/A100 spot capacity |
 | Tooling | Python 3.11+, uv, ruff, pytest | Simple, fast |
 

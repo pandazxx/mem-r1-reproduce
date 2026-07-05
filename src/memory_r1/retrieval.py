@@ -16,22 +16,35 @@ DEFAULT_TOP_K = 60
 
 
 class Embedder(Protocol):
-    def embed(self, texts: list[str]) -> list[list[float]]: ...
+    def embed(self, texts: list[str], *, kind: str = "passage") -> list[list[float]]: ...
 
 
 class OpenAIEmbedder:
-    def __init__(self, model: str = "text-embedding-3-small", client=None):
+    """OpenAI-compatible embeddings.
+
+    NVIDIA's retrieval NIMs (e.g. nv-embedqa-e5-v5) are asymmetric and
+    require an ``input_type`` of "query" or "passage"; set
+    ``input_type_param=True`` for those. OpenAI models ignore the kind.
+    """
+
+    def __init__(
+        self, model: str = "text-embedding-3-small", client=None, input_type_param: bool = False
+    ):
         if client is None:
             from openai import OpenAI
 
             client = OpenAI()
         self._client = client
         self._model = model
+        self._input_type_param = input_type_param
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], *, kind: str = "passage") -> list[list[float]]:
         if not texts:
             return []
-        response = self._client.embeddings.create(model=self._model, input=texts)
+        kwargs = {}
+        if self._input_type_param:
+            kwargs["extra_body"] = {"input_type": kind, "truncate": "END"}
+        response = self._client.embeddings.create(model=self._model, input=texts, **kwargs)
         return [item.embedding for item in response.data]
 
 
@@ -51,7 +64,8 @@ class Retriever:
     def _embed_cached(self, texts: list[str]) -> list[list[float]]:
         missing = [t for t in dict.fromkeys(texts) if t not in self._cache]
         if missing:
-            for text, vector in zip(missing, self._embedder.embed(missing), strict=True):
+            vectors = self._embedder.embed(missing, kind="passage")
+            for text, vector in zip(missing, vectors, strict=True):
                 self._cache[text] = vector
         return [self._cache[t] for t in texts]
 
@@ -59,7 +73,7 @@ class Retriever:
         entries = bank.entries
         if not entries:
             return []
-        query_vec = self._embedder.embed([query])[0]
+        query_vec = self._embedder.embed([query], kind="query")[0]
         entry_vecs = self._embed_cached([e.text for e in entries])
         scored = sorted(
             zip(entries, entry_vecs, strict=True),

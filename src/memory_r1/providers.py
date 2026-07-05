@@ -25,6 +25,7 @@ class Provider:
     api_key_env: str
     chat_model: str
     embedding_model: str
+    embedding_input_type: bool = False
 
 
 NIM = Provider(
@@ -32,8 +33,10 @@ NIM = Provider(
     base_url="https://integrate.api.nvidia.com/v1",
     api_key_env="NVIDIA_API_KEY",
     chat_model="meta/llama-3.1-8b-instruct",
-    # bge-m3 is symmetric: no NVIDIA-specific input_type passage/query split needed
-    embedding_model="baai/bge-m3",
+    # QA-retrieval-tuned; asymmetric, so requires input_type query/passage.
+    # (baai/bge-m3 is listed on the endpoint but 500s as of 2026-07.)
+    embedding_model="nvidia/nv-embedqa-e5-v5",
+    embedding_input_type=True,
 )
 
 OPENAI = Provider(
@@ -88,4 +91,6 @@ def make_embedder(
     model = model or os.environ.get("MEMR1_EMBEDDING_MODEL") or provider.embedding_model
     if client is None:
         client = make_client(provider)
-    return OpenAIEmbedder(model=model, client=client)
+    return OpenAIEmbedder(
+        model=model, client=client, input_type_param=provider.embedding_input_type
+    )
