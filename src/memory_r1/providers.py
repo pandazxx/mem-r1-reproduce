@@ -131,12 +131,21 @@ def make_llm(
 
 
 def make_embedder(
-    provider: Provider | None = None, model: str | None = None, client=None
+    provider: Provider | None = None,
+    model: str | None = None,
+    client=None,
+    rpm: float | None = None,
 ) -> OpenAIEmbedder:
     provider = provider or get_provider()
     model = model or os.environ.get("MEMR1_EMBEDDING_MODEL") or provider.embedding_model
     if client is None:
         client = make_client(provider)
+    rpm = rpm if rpm is not None else float(os.environ.get("MEMR1_RPM", 0)) or provider.rpm
+    limiter = RateLimiter(rpm) if rpm else None
     return OpenAIEmbedder(
-        model=model, client=client, input_type_param=provider.embedding_input_type
+        model=model,
+        client=client,
+        input_type_param=provider.embedding_input_type,
+        throttle=limiter.wait if limiter else None,
+        retry=_with_429_retry,
     )

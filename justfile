@@ -27,6 +27,14 @@ data:
 banks: data
     uv run python scripts/build_memory_banks.py
 
+# Frozen-baseline eval on the validation split (81 QA, ~25 min on NIM)
+eval-val *ARGS: data
+    uv run python scripts/run_eval.py --split val {{ARGS}}
+
+# Frozen-baseline eval on the full test split (1307 QA, ~3 h on NIM)
+eval-test *ARGS: data
+    uv run python scripts/run_eval.py --split test {{ARGS}}
+
 # Live smoke test of the configured provider (chat + embeddings + retrieval)
 smoke:
     uv run python -c "\

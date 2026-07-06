@@ -73,12 +73,16 @@ def test_make_llm_model_env_override(monkeypatch):
 
 def test_make_embedder_uses_provider_model(monkeypatch):
     monkeypatch.delenv("MEMR1_EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("MEMR1_RPM", raising=False)
     embedder = make_embedder(NIM, client=object())
     assert embedder._model == NIM.embedding_model
     assert embedder._input_type_param is True
+    assert embedder._throttle is not None
+    assert embedder._retry is not None
 
     embedder = make_embedder(OPENAI, client=object())
     assert embedder._input_type_param is False
+    assert embedder._throttle is None
 
 
 def test_rate_limiter_spaces_calls():
