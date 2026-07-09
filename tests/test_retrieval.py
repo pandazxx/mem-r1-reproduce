@@ -65,10 +65,12 @@ def test_entry_embeddings_are_cached():
 class FakeEmbeddingsClient:
     def __init__(self):
         self.kwargs = None
+        self.batches = []
         self.embeddings = self
 
     def create(self, **kwargs):
         self.kwargs = kwargs
+        self.batches.append(list(kwargs["input"]))
 
         class Item:
             embedding = [1.0, 0.0]
@@ -87,3 +89,33 @@ def test_openai_embedder_input_type_param():
     client = FakeEmbeddingsClient()
     OpenAIEmbedder(model="m", client=client).embed(["x"], kind="query")
     assert "extra_body" not in client.kwargs
+
+
+def test_openai_embedder_batches_and_throttles():
+    client = FakeEmbeddingsClient()
+    throttles = []
+    embedder = OpenAIEmbedder(
+        model="m", client=client, batch_size=2, throttle=lambda: throttles.append(1)
+    )
+    vectors = embedder.embed(["a", "b", "c", "d", "e"])
+    assert client.batches == [["a", "b"], ["c", "d"], ["e"]]
+    assert len(vectors) == 5
+    assert len(throttles) == 3
+
+
+def test_openai_embedder_uses_retry_wrapper():
+    client = FakeEmbeddingsClient()
+    wrapped = []
+
+    def retry(call):
+        wrapped.append(1)
+        return call()
+
+    OpenAIEmbedder(model="m", client=client, batch_size=2, retry=retry).embed(["a", "b", "c"])
+    assert len(wrapped) == 2
+
+
+def test_openai_embedder_empty_input_makes_no_calls():
+    client = FakeEmbeddingsClient()
+    assert OpenAIEmbedder(model="m", client=client).embed([]) == []
+    assert client.batches == []

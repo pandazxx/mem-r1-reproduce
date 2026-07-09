@@ -73,9 +73,80 @@ def test_make_llm_model_env_override(monkeypatch):
 
 def test_make_embedder_uses_provider_model(monkeypatch):
     monkeypatch.delenv("MEMR1_EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("MEMR1_RPM", raising=False)
     embedder = make_embedder(NIM, client=object())
     assert embedder._model == NIM.embedding_model
     assert embedder._input_type_param is True
+    assert embedder._throttle is not None
+    assert embedder._retry is not None
 
     embedder = make_embedder(OPENAI, client=object())
     assert embedder._input_type_param is False
+    assert embedder._throttle is None
+
+
+def test_rate_limiter_spaces_calls():
+    from memory_r1.providers import RateLimiter
+
+    now = {"t": 100.0}
+    sleeps = []
+
+    def clock():
+        return now["t"]
+
+    def sleep(s):
+        sleeps.append(s)
+        now["t"] += s
+
+    limiter = RateLimiter(30, clock=clock, sleep=sleep)  # 2s interval
+    limiter.wait()
+    assert sleeps == []
+    limiter.wait()
+    assert sleeps == [2.0]
+    now["t"] += 5  # long gap: no sleep needed
+    limiter.wait()
+    assert sleeps == [2.0]
+
+
+def test_429_retry_then_success():
+    import httpx
+    from openai import RateLimitError
+
+    from memory_r1.providers import _with_429_retry
+
+    err = RateLimitError(
+        "429",
+        response=httpx.Response(429, request=httpx.Request("POST", "http://x")),
+        body=None,
+    )
+    calls = {"n": 0}
+    sleeps = []
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise err
+        return "ok"
+
+    assert _with_429_retry(flaky, sleep=sleeps.append) == "ok"
+    assert sleeps == [15, 30]
+
+
+def test_429_retry_exhausted_raises():
+    import httpx
+    import pytest as _pytest
+    from openai import RateLimitError
+
+    from memory_r1.providers import _with_429_retry
+
+    err = RateLimitError(
+        "429",
+        response=httpx.Response(429, request=httpx.Request("POST", "http://x")),
+        body=None,
+    )
+
+    def always_fail():
+        raise err
+
+    with _pytest.raises(RateLimitError):
+        _with_429_retry(always_fail, attempts=3, sleep=lambda s: None)
