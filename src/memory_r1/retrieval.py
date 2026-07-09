@@ -16,23 +16,53 @@ DEFAULT_TOP_K = 60
 
 
 class Embedder(Protocol):
-    def embed(self, texts: list[str]) -> list[list[float]]: ...
+    def embed(self, texts: list[str], *, kind: str = "passage") -> list[list[float]]: ...
 
 
 class OpenAIEmbedder:
-    def __init__(self, model: str = "text-embedding-3-small", client=None):
+    """OpenAI-compatible embeddings.
+
+    NVIDIA's retrieval NIMs (e.g. nv-embedqa-e5-v5) are asymmetric and
+    require an ``input_type`` of "query" or "passage"; set
+    ``input_type_param=True`` for those. OpenAI models ignore the kind.
+    """
+
+    def __init__(
+        self,
+        model: str = "text-embedding-3-small",
+        client=None,
+        input_type_param: bool = False,
+        batch_size: int = 64,
+        throttle=None,
+        retry=None,
+    ):
         if client is None:
             from openai import OpenAI
 
             client = OpenAI()
         self._client = client
         self._model = model
+        self._input_type_param = input_type_param
+        self._batch_size = batch_size
+        self._throttle = throttle
+        self._retry = retry
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-        response = self._client.embeddings.create(model=self._model, input=texts)
-        return [item.embedding for item in response.data]
+    def embed(self, texts: list[str], *, kind: str = "passage") -> list[list[float]]:
+        kwargs = {}
+        if self._input_type_param:
+            kwargs["extra_body"] = {"input_type": kind, "truncate": "END"}
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), self._batch_size):
+            batch = texts[start : start + self._batch_size]
+            if self._throttle:
+                self._throttle()
+
+            def call(batch=batch):
+                return self._client.embeddings.create(model=self._model, input=batch, **kwargs)
+
+            response = self._retry(call) if self._retry else call()
+            vectors.extend(item.embedding for item in response.data)
+        return vectors
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -51,7 +81,8 @@ class Retriever:
     def _embed_cached(self, texts: list[str]) -> list[list[float]]:
         missing = [t for t in dict.fromkeys(texts) if t not in self._cache]
         if missing:
-            for text, vector in zip(missing, self._embedder.embed(missing), strict=True):
+            vectors = self._embedder.embed(missing, kind="passage")
+            for text, vector in zip(missing, vectors, strict=True):
                 self._cache[text] = vector
         return [self._cache[t] for t in texts]
 
@@ -59,7 +90,7 @@ class Retriever:
         entries = bank.entries
         if not entries:
             return []
-        query_vec = self._embedder.embed([query])[0]
+        query_vec = self._embedder.embed([query], kind="query")[0]
         entry_vecs = self._embed_cached([e.text for e in entries])
         scored = sorted(
             zip(entries, entry_vecs, strict=True),

@@ -14,6 +14,7 @@ from memory_r1.locomo import Conversation, Turn
 from memory_r1.memory_bank import MemoryBank
 
 LLMFn = Callable[[str], str]
+"""Prompt-in, completion-out. Build one with providers.make_llm()."""
 
 FACT_EXTRACTION_PROMPT = """\
 You extract personal facts from one turn of a dialogue for a long-term memory system.
@@ -53,20 +54,3 @@ def bootstrap_memory_bank(llm: LLMFn, conversation: Conversation) -> MemoryBank:
             for fact in extract_facts(llm, turn, session.date_time):
                 bank.add(fact, timestamp=session.date_time)
     return bank
-
-
-def openai_llm(model: str = "gpt-4o-mini", client=None) -> LLMFn:
-    if client is None:
-        from openai import OpenAI
-
-        client = OpenAI()
-
-    def complete(prompt: str) -> str:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-        )
-        return response.choices[0].message.content or ""
-
-    return complete
