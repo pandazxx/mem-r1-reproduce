@@ -47,5 +47,5 @@ outputs/           Checkpoints, logs, eval results (gitignored)
 
 - RL: prototype with **TRL GRPOTrainer + LoRA**, migrate to **verl** (what the paper used) for faithful runs.
 - Primary backbone: **Qwen2.5-3B-Instruct** (paper's smallest); scale to 7B/8B only after the pipeline works end-to-end.
-- Judge / memory-bank bootstrapping: **GPT-4o-mini** (matches paper). API keys via env vars, never committed.
+- API LLM/embeddings (bootstrap, judge, frozen-baseline inference): **NVIDIA NIM free tier** by default (`MEMR1_PROVIDER=nim`, ~40 RPM, $0); **OpenAI GPT-4o-mini** as fallback (`MEMR1_PROVIDER=openai`) for the final paper-comparable judge run. See `src/memory_r1/providers.py`. API keys via env vars (`NVIDIA_API_KEY` / `OPENAI_API_KEY`), never committed.
 - Benchmark: **LoCoMo** (152 train / 81 val / 1307 test QA pairs).
