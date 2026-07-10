@@ -16,8 +16,9 @@ grpo:
   output_dir: outputs/grpo-answer-qwen3b
   num_train_epochs: 3
   learning_rate: 1.0e-5
-  per_device_train_batch_size: 8
-  gradient_accumulation_steps: 2
+  # batch 2 x accum 8: batch 8 x accum 2 OOMs a 24 GB card on ~3k-token prompts
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8
   num_generations: 8
   # max_prompt_length was removed in TRL 1.x; prompts are naturally bounded (~top-60 memories)
   max_completion_length: 256
