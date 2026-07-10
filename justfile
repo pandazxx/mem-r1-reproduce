@@ -27,6 +27,14 @@ data:
 banks: data
     uv run python scripts/build_memory_banks.py
 
+# Precompute top-60 retrieval contexts for train/val QA (resumable)
+contexts: data
+    uv run python scripts/build_train_contexts.py
+
+# GRPO-train the Answer Agent — GPU box only (uv sync --extra train first)
+train-answer *ARGS:
+    uv run python scripts/train_grpo_answer_agent.py {{ARGS}}
+
 # Frozen-baseline eval on the validation split (81 QA, ~25 min on NIM)
 eval-val *ARGS: data
     uv run python scripts/run_eval.py --split val {{ARGS}}

@@ -25,14 +25,15 @@ Repo scaffolding, Claude agent config, paper notes, plan.
 - GPT-4o-mini bootstrap of initial memory banks per dialogue.
 - Embedding retrieval over the bank (top-k, ~60 candidates for answering).
 
-### M2 — Frozen baseline (no RL)
-- Prompted (untrained) Memory Manager + Answer Agent — served free via NIM (Llama-3.1-8B / Qwen2.5 hosted endpoints), so no GPU rental needed for the baseline; vLLM self-hosting only becomes necessary in M3+ when we train weights.
+### M2 — Frozen baseline (no RL) — done (2026-07-06)
+- Prompted (untrained) Answer Agent served free via NIM — no GPU rental.
 - Eval harness: F1, BLEU-1, LLM-as-a-Judge on LoCoMo test.
-- Reproduce the "vanilla" baseline row. This validates the whole eval path before any RL.
+- Result: test F1 .352 / BLEU-1 .291 / Judge .423 — above the paper's Mem0 row, below its RL row (see docs/experiments.md).
 
-### M3 — RL Answer Agent (Stage 2)
-- GRPO via TRL + LoRA on Qwen2.5-3B, single A6000/A100 pod.
-- Reward: EM vs gold. Memory distillation prompt format.
+### M3 — RL Answer Agent (Stage 2) — in progress
+- GRPO via TRL + LoRA on Qwen2.5-3B, single 24–48 GB pod (see docs/grpo-answer-agent.md).
+- Reward: EM vs gold. Memory distillation prompt format, identical to the M2 eval prompt.
+- Retrieval contexts precomputed and committed so the GPU box needs no API access.
 - Target: measurable lift over M2 baseline.
 
 ### M4 — RL Memory Manager (Stage 1)
