@@ -72,7 +72,7 @@ same banks, retrieval, and prompts.
 
 - EM reward on 152 prompts is sparse; if reward stays flat, switch
   `reward_metric: f1` or raise generations per prompt.
-- 24 GB may OOM at max_prompt_length 3072 with 8 generations — drop
-  batch size or rent 48 GB.
+- 24 GB may OOM on ~3k-token prompts with 8 generations (TRL 1.x has no
+  prompt truncation option) — drop batch size or rent 48 GB.
 - TRL GRPO ≠ verl GRPO in implementation details (advantage normalization,
   KL handling); trends here, faithful numbers in M5.
