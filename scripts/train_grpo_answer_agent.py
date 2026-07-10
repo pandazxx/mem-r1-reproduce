@@ -25,6 +25,7 @@ def main() -> None:
     import yaml
     from datasets import Dataset
     from peft import LoraConfig
+    from transformers.trainer_utils import get_last_checkpoint
     from trl import GRPOConfig, GRPOTrainer
 
     from memory_r1.grpo import build_prompt, load_contexts, make_trl_reward
@@ -52,7 +53,11 @@ def main() -> None:
         train_dataset=dataset,
         peft_config=LoraConfig(**config["lora"]),
     )
-    trainer.train()
+    output_dir = ROOT / config["grpo"]["output_dir"]
+    last_checkpoint = get_last_checkpoint(output_dir) if output_dir.is_dir() else None
+    if last_checkpoint:
+        print(f"resuming from {last_checkpoint}")
+    trainer.train(resume_from_checkpoint=last_checkpoint)
     trainer.save_model()
     print(f"saved adapter to {config['grpo']['output_dir']}")
 
