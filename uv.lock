@@ -899,7 +899,7 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'train'", specifier = ">=6.0" },
     { name = "torch", marker = "extra == 'train'", specifier = ">=2.5" },
     { name = "transformers", marker = "extra == 'train'", specifier = ">=4.48" },
-    { name = "trl", marker = "extra == 'train'", specifier = ">=0.14" },
+    { name = "trl", marker = "extra == 'train'", specifier = ">=1.8" },
 ]
 provides-extras = ["train"]
 

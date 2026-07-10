@@ -50,6 +50,15 @@ def test_make_trl_reward_batches():
     assert reward.__name__ == "answer_reward_em"
 
 
+def test_make_trl_reward_unwraps_conversational_completions():
+    reward = make_trl_reward("em")
+    scores = reward(
+        completions=[[{"role": "assistant", "content": "Answer: dog"}]],
+        answer=["dog"],
+    )
+    assert scores == [1.0]
+
+
 def test_load_contexts_roundtrip(tmp_path):
     records = [
         {

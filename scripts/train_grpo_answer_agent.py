@@ -31,9 +31,15 @@ def main() -> None:
 
     config = yaml.safe_load((ROOT / args.config).read_text())
     contexts = load_contexts(ROOT / config["train_contexts"])
+    # message format so TRL applies the chat template — matches how the M2
+    # baseline consumed the same prompt via the chat API (and lets EOS end
+    # completions instead of every generation running to the token cap)
     dataset = Dataset.from_list(
         [
-            {"prompt": build_prompt(c["memories"], c["question"]), "answer": c["answer"]}
+            {
+                "prompt": [{"role": "user", "content": build_prompt(c["memories"], c["question"])}],
+                "answer": c["answer"],
+            }
             for c in contexts
         ]
     )

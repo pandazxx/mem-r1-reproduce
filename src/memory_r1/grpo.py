@@ -33,12 +33,19 @@ def answer_reward(completion: str, gold: str, *, metric: str = "em") -> float:
     return REWARD_METRICS[metric](parse_answer(completion), gold)
 
 
+def _completion_text(completion) -> str:
+    # conversational datasets: TRL passes [{"role": "assistant", "content": ...}]
+    if isinstance(completion, list):
+        return completion[-1]["content"]
+    return completion
+
+
 def make_trl_reward(metric: str = "em"):
     """TRL reward function: completions + the dataset's ``answer`` column."""
 
-    def reward(completions: list[str], answer: list[str], **kwargs) -> list[float]:
+    def reward(completions: list, answer: list[str], **kwargs) -> list[float]:
         return [
-            answer_reward(completion, gold, metric=metric)
+            answer_reward(_completion_text(completion), gold, metric=metric)
             for completion, gold in zip(completions, answer, strict=True)
         ]
 
