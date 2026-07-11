@@ -52,6 +52,24 @@ eval-local *ARGS: data
 export-adapter *ARGS:
     uv run python scripts/export_answer_adapter.py {{ARGS}}
 
+# ---- RunPod targets (on the pod: `uv tool install rust-just`, then `uv sync --extra train`) ----
+# pod-* targets run under scripts/pod_guard.sh: when the command ends — success,
+# failure, or time limit — the pod is stopped via runpodctl so it never keeps
+# billing unattended. Outputs live on the network volume and survive the stop.
+# Optional: export TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for a done-notification.
+
+# GRPO training under the cost guard (last full run: 2h30m on a 32GB card)
+pod-train CONFIG="configs/grpo-answer-qwen3b.yaml" LIMIT="3.5h":
+    bash scripts/pod_guard.sh {{LIMIT}} uv run python scripts/train_grpo_answer_agent.py --config {{CONFIG}}
+
+# Offline val eval of a trained adapter under the cost guard (~20-30 min on GPU)
+pod-eval ADAPTER="outputs/grpo-answer-qwen3b" LIMIT="1.5h": data
+    bash scripts/pod_guard.sh {{LIMIT}} uv run python scripts/run_eval.py --split val --contexts artifacts/contexts/val.jsonl --model Qwen/Qwen2.5-3B-Instruct --adapter {{ADAPTER}}
+
+# Run any command under the cost guard, e.g. `just pod-guard 2h uv run python ...`
+pod-guard LIMIT +CMD:
+    bash scripts/pod_guard.sh {{LIMIT}} {{CMD}}
+
 # Live smoke test of the configured provider (chat + embeddings + retrieval)
 smoke:
     uv run python -c "\
