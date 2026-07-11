@@ -41,14 +41,16 @@ def make_local_llm(model: str, adapter: str | None = None, max_new_tokens: int =
             [{"role": "user", "content": prompt}],
             add_generation_prompt=True,
             return_tensors="pt",
+            return_dict=True,
         ).to(device)
         with torch.no_grad():
             output = lm.generate(
-                inputs,
+                **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
                 pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
             )
-        return tokenizer.decode(output[0, inputs.shape[1] :], skip_special_tokens=True).strip()
+        prompt_len = inputs["input_ids"].shape[1]
+        return tokenizer.decode(output[0, prompt_len:], skip_special_tokens=True).strip()
 
     return llm
