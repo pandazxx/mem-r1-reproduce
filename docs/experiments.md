@@ -53,3 +53,19 @@ Append-only. For each run: config, cost, wall-clock, results.
   - Judge (.423) lands slightly *below* Mem0's (.457), but the judges differ (llama-8b here vs GPT-4o-mini in the paper) so this comparison is soft; rescore predictions with `MEMR1_PROVIDER=openai` for the paper-comparable number (the JSONL keeps every prediction, so rescoring doesn't need to rerun answers).
   - open-domain is the weakest category (F1 .152) — these questions need broad synthesis across sessions, which top-60 retrieval + noisy banks handles poorly.
   - Our seed-42 test split ≠ the paper's unpublished partition; aggregate comparison only.
+
+## 2026-07-11 — GRPO Answer Agent training (M3, first full run)
+
+- **Config**: `configs/grpo-answer-qwen3b.yaml` @ `8f66fb6` — Qwen/Qwen2.5-3B-Instruct + LoRA (r16/α32, all proj), TRL 1.8.0 GRPOTrainer, EM reward, 152 train prompts (precomputed top-60 contexts, chat-template format), 3 epochs, effective batch 16, 8 generations/prompt, temperature 0.9, β=0.04, bf16 + gradient checkpointing.
+- **Hardware**: RunPod RTX PRO 4500 Blackwell 32 GB ($0.74/hr), torch 2.13+cu130.
+- **Output**: LoRA adapter (120 MB) → `outputs/grpo-answer-qwen3b/` on the pod's network volume (not committed; exceeds GitHub's 100 MB file limit).
+- **Cost**: ≈ $2.10 (2.8 h pod time; train_runtime 9,031 s = 2 h 30 m for 228 steps, ~40 s/step). Plus ≈ $1.75 burned on a failed 24 GB RTX 4090 attempt (see notes).
+- **Training signal** (mean EM reward per epoch, online sampling @ T=0.9):
+  epoch 1 = 0.121, epoch 2 = 0.150, epoch 3 = 0.152 (+26% e1→e3, plateauing).
+  151/228 steps had all-zero rewards (sparse EM ⇒ no gradient for those groups); final KL ≈ 0.003.
+- **Notes**:
+  - Two OOM lessons on 24 GB (RTX 4090): batch 8×accum 2 dies at step 0; batch 2×accum 8 dies mid-run (~step 62) on generation peaks of 16 sequences. Fixes: `generation_batch_size: 8`, checkpoint every 25 steps, auto-resume — after which the 32 GB run was clean end-to-end.
+  - TRL resolved to 1.8.0 (config written for 0.14-era API): `max_prompt_length` removed; prompts must be message-format for chat-template application; `trl>=1.8` now pinned.
+  - EM reward is sparse — 66% of steps carried no learning signal. If val eval shows weak lift, retry with `reward_metric: f1` (shaped) per the config's fallback note.
+  - Reward plateau by epoch 3 suggests more epochs won't help at this scale; more train prompts or shaped reward are likelier levers.
+  - Next: local-inference eval of the adapter on the val split (needs a pod-side LLMFn wrapper), then test split if promising.
