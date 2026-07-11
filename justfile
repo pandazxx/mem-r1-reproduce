@@ -53,8 +53,9 @@ export-adapter *ARGS:
     uv run python scripts/export_answer_adapter.py {{ARGS}}
 
 # ---- RunPod targets (on the pod: `uv tool install rust-just`, then `uv sync --extra train`) ----
-# pod-* targets run under scripts/pod_guard.sh: if the command fails or exceeds
-# its time limit, the pod is stopped via runpodctl so it stops billing.
+# pod-* targets run under scripts/pod_guard.sh: when the command ends — success,
+# failure, or time limit — the pod is stopped via runpodctl so it never keeps
+# billing unattended. Outputs live on the network volume and survive the stop.
 
 # GRPO training under the cost guard (last full run: 2h30m on a 32GB card)
 pod-train CONFIG="configs/grpo-answer-qwen3b.yaml" LIMIT="3.5h":

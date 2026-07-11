@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Cost guard for RunPod: run a command under a time limit and stop the pod
-# if the command fails or exceeds the limit, so a hung or broken run does
-# not keep billing. On success the pod keeps running.
+# Cost guard for RunPod: run a command under a time limit, then stop the pod
+# no matter how it ended (success, failure, or timeout) — an unattended pod
+# should never keep billing. Outputs live on the network volume, which
+# survives the stop.
 #
 # Usage: pod_guard.sh <time-limit> <command...>     e.g. pod_guard.sh 3.5h uv run ...
 set -u
@@ -20,10 +21,8 @@ timeout --foreground --signal=TERM --kill-after=60 "$limit" "$@"
 status=$?
 
 if [ "$status" -eq 0 ]; then
-    exit 0
-fi
-
-if [ "$status" -eq 124 ]; then
+    echo "pod-guard: command finished successfully" >&2
+elif [ "$status" -eq 124 ]; then
     echo "pod-guard: time limit ($limit) exceeded" >&2
 else
     echo "pod-guard: command failed (exit $status)" >&2
