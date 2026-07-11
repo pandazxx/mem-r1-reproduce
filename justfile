@@ -56,6 +56,7 @@ export-adapter *ARGS:
 # pod-* targets run under scripts/pod_guard.sh: when the command ends — success,
 # failure, or time limit — the pod is stopped via runpodctl so it never keeps
 # billing unattended. Outputs live on the network volume and survive the stop.
+# Optional: export TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for a done-notification.
 
 # GRPO training under the cost guard (last full run: 2h30m on a 32GB card)
 pod-train CONFIG="configs/grpo-answer-qwen3b.yaml" LIMIT="3.5h":
