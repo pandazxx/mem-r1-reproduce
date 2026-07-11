@@ -53,3 +53,39 @@ Append-only. For each run: config, cost, wall-clock, results.
   - Judge (.423) lands slightly *below* Mem0's (.457), but the judges differ (llama-8b here vs GPT-4o-mini in the paper) so this comparison is soft; rescore predictions with `MEMR1_PROVIDER=openai` for the paper-comparable number (the JSONL keeps every prediction, so rescoring doesn't need to rerun answers).
   - open-domain is the weakest category (F1 .152) — these questions need broad synthesis across sessions, which top-60 retrieval + noisy banks handles poorly.
   - Our seed-42 test split ≠ the paper's unpublished partition; aggregate comparison only.
+
+## 2026-07-11 — GRPO Answer Agent training (M3, first full run)
+
+- **Config**: `configs/grpo-answer-qwen3b.yaml` @ `8f66fb6` — Qwen/Qwen2.5-3B-Instruct + LoRA (r16/α32, all proj), TRL 1.8.0 GRPOTrainer, EM reward, 152 train prompts (precomputed top-60 contexts, chat-template format), 3 epochs, effective batch 16, 8 generations/prompt, temperature 0.9, β=0.04, bf16 + gradient checkpointing.
+- **Hardware**: RunPod RTX PRO 4500 Blackwell 32 GB ($0.74/hr), torch 2.13+cu130.
+- **Output**: LoRA adapter (120 MB) → `outputs/grpo-answer-qwen3b/` on the pod's network volume (not committed; exceeds GitHub's 100 MB file limit).
+- **Cost**: ≈ $2.10 (2.8 h pod time; train_runtime 9,031 s = 2 h 30 m for 228 steps, ~40 s/step). Plus ≈ $1.75 burned on a failed 24 GB RTX 4090 attempt (see notes).
+- **Training signal** (mean EM reward per epoch, online sampling @ T=0.9):
+  epoch 1 = 0.121, epoch 2 = 0.150, epoch 3 = 0.152 (+26% e1→e3, plateauing).
+  151/228 steps had all-zero rewards (sparse EM ⇒ no gradient for those groups); final KL ≈ 0.003.
+- **Notes**:
+  - Two OOM lessons on 24 GB (RTX 4090): batch 8×accum 2 dies at step 0; batch 2×accum 8 dies mid-run (~step 62) on generation peaks of 16 sequences. Fixes: `generation_batch_size: 8`, checkpoint every 25 steps, auto-resume — after which the 32 GB run was clean end-to-end.
+  - TRL resolved to 1.8.0 (config written for 0.14-era API): `max_prompt_length` removed; prompts must be message-format for chat-template application; `trl>=1.8` now pinned.
+  - EM reward is sparse — 66% of steps carried no learning signal. If val eval shows weak lift, retry with `reward_metric: f1` (shaped) per the config's fallback note.
+  - Reward plateau by epoch 3 suggests more epochs won't help at this scale; more train prompts or shaped reward are likelier levers.
+  - Next: local-inference eval of the adapter on the val split (needs a pod-side LLMFn wrapper), then test split if promising.
+
+## 2026-07-11 — GRPO-trained vs frozen Qwen2.5-3B, val split (offline, MBP)
+
+- **Config**: `scripts/run_eval.py --split val --contexts artifacts/contexts/val.jsonl` — fully offline: precomputed top-60 retrieval, local transformers inference (`memory_r1.local_llm`, greedy decoding, chat template), no judge. Run on an 18 GB M-series MacBook (MPS, fp16). Trained model = base + LoRA adapter from the 2026-07-11 GRPO run (HF: `pandazxx/mem-r1-answer-qwen3b`).
+- **Input**: 81 val QA (seed-42 split), identical contexts/prompts for both models.
+- **Output**: `artifacts/eval/mbp-qwen3b-grpo-val/` and `artifacts/eval/mbp-qwen3b-frozen-val/` (summary.json, committed).
+- **Cost**: $0 (local). Wall-clock ≈ 45 min per run.
+- **Results** (val, n=81, F1):
+
+  | Model | EM | F1 | BLEU-1 | multi-hop F1 (16) | temporal F1 (13) | open-domain F1 (3) | single-hop F1 (49) |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | Frozen Qwen2.5-3B | 0.198 | 0.392 | 0.352 | 0.295 | 0.429 | 0.083 | 0.433 |
+  | GRPO-trained | 0.198 | 0.379 | 0.341 | 0.239 | 0.429 | 0.000 | 0.435 |
+
+- **Verdict: no lift.** The first GRPO run is a null result — overall F1 slightly *down* (−.013), EM identical, single-hop a wash, multi-hop and open-domain worse.
+- **Notes**:
+  - Temporal scores are byte-identical between the two models — under greedy decoding the policy produces the same outputs on those 13 questions. Consistent with final KL ≈ 0.003: the policy barely moved during training.
+  - Root-cause hypothesis: sparse EM reward (66% of steps had all-zero rewards ⇒ no gradient) + conservative lr/LoRA meant almost no policy update, so eval parity is expected, not surprising.
+  - Note the frozen Qwen-3B (local, greedy) already beats the M2 frozen llama-8b-via-NIM val baseline on F1 (.392 vs .377) — model/back-end differences matter as much as RL here; keep comparisons within the same inference path.
+  - Next lever: rerun with `reward_metric: f1` (shaped reward, ~every step carries gradient) as a new config (`configs/grpo-answer-qwen3b-f1.yaml`), ~$2–3 on the same 32 GB pod (network volume kept alive). If still flat, raise lr or LoRA r before questioning the approach.

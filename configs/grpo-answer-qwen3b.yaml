@@ -1,0 +1,36 @@
+# M3: GRPO Answer Agent prototype — Qwen2.5-3B + LoRA on one 24–48 GB GPU.
+# See docs/grpo-answer-agent.md.
+
+model: Qwen/Qwen2.5-3B-Instruct
+train_contexts: artifacts/contexts/train.jsonl
+reward_metric: em # paper's reward; "f1" as shaped fallback if EM is too sparse
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  task_type: CAUSAL_LM
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+grpo:
+  output_dir: outputs/grpo-answer-qwen3b
+  num_train_epochs: 3
+  learning_rate: 1.0e-5
+  # batch 2 x accum 8: batch 8 x accum 2 OOMs a 24 GB card on ~3k-token prompts
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8
+  num_generations: 8
+  # generate 8 at a time: 16-sequence generation peaks OOM'd a 24 GB card mid-run
+  generation_batch_size: 8
+  # max_prompt_length was removed in TRL 1.x; prompts are naturally bounded (~top-60 memories)
+  max_completion_length: 256
+  temperature: 0.9
+  beta: 0.04
+  bf16: true
+  gradient_checkpointing: true
+  logging_steps: 1
+  # frequent checkpoints (~12 min apart): a mid-run crash once lost 30 min of training
+  save_strategy: steps
+  save_steps: 25
+  save_total_limit: 2
+  report_to: none

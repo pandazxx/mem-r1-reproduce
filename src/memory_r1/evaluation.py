@@ -9,7 +9,7 @@ from memory_r1.answer_agent import answer_question
 from memory_r1.bootstrap import LLMFn
 from memory_r1.judge import judge_answer
 from memory_r1.locomo import CATEGORY_NAMES, QAPair
-from memory_r1.memory_bank import MemoryBank
+from memory_r1.memory_bank import MemoryBank, MemoryEntry
 from memory_r1.metrics import bleu_1, exact_match, f1_score
 from memory_r1.retrieval import DEFAULT_TOP_K, Retriever
 
@@ -34,15 +34,12 @@ def result_key(conversation_id: str, question: str) -> str:
     return f"{conversation_id}\x1f{question}"
 
 
-def evaluate_question(
+def evaluate_answer(
     qa: QAPair,
-    bank: MemoryBank,
-    retriever: Retriever,
+    memories: list[MemoryEntry],
     llm: LLMFn,
     judge_llm: LLMFn | None = None,
-    top_k: int = DEFAULT_TOP_K,
 ) -> QAResult:
-    memories = retriever.retrieve(bank, qa.question, k=top_k)
     prediction = answer_question(llm, memories, qa.question)
     verdict = None
     if judge_llm is not None:
@@ -58,6 +55,18 @@ def evaluate_question(
         bleu1=bleu_1(prediction, qa.answer),
         judge=verdict,
     )
+
+
+def evaluate_question(
+    qa: QAPair,
+    bank: MemoryBank,
+    retriever: Retriever,
+    llm: LLMFn,
+    judge_llm: LLMFn | None = None,
+    top_k: int = DEFAULT_TOP_K,
+) -> QAResult:
+    memories = retriever.retrieve(bank, qa.question, k=top_k)
+    return evaluate_answer(qa, memories, llm, judge_llm=judge_llm)
 
 
 def _aggregate(results: list[QAResult]) -> dict:

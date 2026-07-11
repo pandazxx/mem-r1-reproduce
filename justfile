@@ -27,6 +27,14 @@ data:
 banks: data
     uv run python scripts/build_memory_banks.py
 
+# Precompute top-60 retrieval contexts for train/val QA (resumable)
+contexts: data
+    uv run python scripts/build_train_contexts.py
+
+# GRPO-train the Answer Agent — GPU box only (uv sync --extra train first)
+train-answer *ARGS:
+    uv run python scripts/train_grpo_answer_agent.py {{ARGS}}
+
 # Frozen-baseline eval on the validation split (81 QA, ~25 min on NIM)
 eval-val *ARGS: data
     uv run python scripts/run_eval.py --split val {{ARGS}}
@@ -34,6 +42,15 @@ eval-val *ARGS: data
 # Frozen-baseline eval on the full test split (1307 QA, ~3 h on NIM)
 eval-test *ARGS: data
     uv run python scripts/run_eval.py --split test {{ARGS}}
+
+# Offline val eval of a local model (GPU box or Apple Silicon; uv sync --extra train)
+# e.g. just eval-local --model Qwen/Qwen2.5-3B-Instruct --adapter outputs/grpo-answer-qwen3b
+eval-local *ARGS: data
+    uv run python scripts/run_eval.py --split val --contexts artifacts/contexts/val.jsonl {{ARGS}}
+
+# Merge the trained LoRA into the base model; --push-repo <user/repo> uploads to HF Hub
+export-adapter *ARGS:
+    uv run python scripts/export_answer_adapter.py {{ARGS}}
 
 # Live smoke test of the configured provider (chat + embeddings + retrieval)
 smoke:
