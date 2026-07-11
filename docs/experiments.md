@@ -89,3 +89,25 @@ Append-only. For each run: config, cost, wall-clock, results.
   - Root-cause hypothesis: sparse EM reward (66% of steps had all-zero rewards ⇒ no gradient) + conservative lr/LoRA meant almost no policy update, so eval parity is expected, not surprising.
   - Note the frozen Qwen-3B (local, greedy) already beats the M2 frozen llama-8b-via-NIM val baseline on F1 (.392 vs .377) — model/back-end differences matter as much as RL here; keep comparisons within the same inference path.
   - Next lever: rerun with `reward_metric: f1` (shaped reward, ~every step carries gradient) as a new config (`configs/grpo-answer-qwen3b-f1.yaml`), ~$2–3 on the same 32 GB pod (network volume kept alive). If still flat, raise lr or LoRA r before questioning the approach.
+
+## 2026-07-12 — GRPO rerun with F1-shaped reward: first real lift (M3)
+
+- **Config**: `configs/grpo-answer-qwen3b-f1.yaml` — single-variable change vs the EM run: `reward_metric: f1`. Everything else identical (Qwen2.5-3B + LoRA r16, TRL 1.8, 3 epochs, 228 steps, effective batch 16, 8 generations, T=0.9, β=0.04).
+- **Hardware**: RunPod RTX PRO 4500 32 GB, run self-service by the user via `just pod-train` (cost guard auto-stopped the pod + Telegram ping — first real-pod exercise of both).
+- **Cost**: train_runtime 8,519 s = 2 h 22 m ≈ $1.75. Eval (both models, same pod) ≈ $0.50.
+- **Training signal**: shaping worked as designed — `frac_reward_zero_std` mostly 0 (vs 66% zero-signal steps under EM); per-step KL 0.006–0.43 (vs 0.003 final KL under EM). The policy actually moved this time.
+- **Output**: adapter in `outputs/grpo-answer-qwen3b-f1/` on the network volume (export to HF Hub pending).
+- **Eval** (val n=81, both models on the same pod/CUDA/bf16/greedy path; `artifacts/eval/pod-qwen3b-{f1,frozen}-val/`):
+
+  | Model | EM | F1 | BLEU-1 | multi-hop F1 (16) | temporal F1 (13) | open-domain F1 (3) | single-hop F1 (49) |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | Frozen Qwen2.5-3B | 0.198 | 0.386 | 0.347 | 0.305 | 0.407 | 0.000 | 0.431 |
+  | GRPO F1-reward | 0.198 | **0.410** | **0.364** | 0.303 | 0.462 | 0.000 | 0.456 |
+
+- **Verdict: +2.4 F1 / +1.7 BLEU-1 overall (+6% relative)** — the first positive RL result of the reproduction. Gains concentrated in temporal (+.054) and single-hop (+.026); multi-hop flat; EM unchanged (the reward shaped answers *toward* gold tokens without producing more exact matches).
+- **Notes**:
+  - Confirms the null-result diagnosis: reward sparsity, not lr/LoRA capacity, was the bottleneck. One variable changed, KL rose ~100×, F1 followed.
+  - Backend variance check: frozen F1 is .386 on CUDA/bf16 vs .392 on MPS/fp16 — ~.006 of greedy-decoding drift between backends, which is why both models must share an inference path. The +.024 lift is ~4× that noise floor.
+  - EM-trained adapter (val F1 .379) < frozen < F1-trained (.410): reward choice alone swings ~3 F1 points on this budget.
+  - Still short of the paper's relative lift (LLaMA-8B, verl, full test split) — but the mechanism now demonstrably works at 3B/TRL/$2 scale.
+  - Next: export adapter to HF Hub, judge rescore (gpt-4o-mini) of both prediction sets, then decide between test-split eval of this adapter vs. moving to M4 (Memory Manager RL).
