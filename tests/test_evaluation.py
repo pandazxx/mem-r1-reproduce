@@ -1,8 +1,14 @@
 import pytest
 
-from memory_r1.evaluation import QAResult, evaluate_question, result_key, summarize
+from memory_r1.evaluation import (
+    QAResult,
+    evaluate_answer,
+    evaluate_question,
+    result_key,
+    summarize,
+)
 from memory_r1.locomo import QAPair
-from memory_r1.memory_bank import MemoryBank
+from memory_r1.memory_bank import MemoryBank, MemoryEntry
 from memory_r1.retrieval import Retriever
 
 
@@ -67,6 +73,18 @@ def test_evaluate_question_respects_top_k():
     evaluate_question(make_qa(), make_bank(), Retriever(KeywordEmbedder()), llm, top_k=1)
     assert "Caroline bought a blue bike" in seen["prompt"]
     assert "Melanie lives in a big city" not in seen["prompt"]
+
+
+def test_evaluate_answer_uses_given_memories():
+    memories = [MemoryEntry(id="0", text="Caroline bought a blue bike", timestamp="8 May 2023")]
+
+    def llm(prompt):
+        assert "Caroline bought a blue bike" in prompt
+        return "Answer: a blue bike"
+
+    result = evaluate_answer(make_qa(), memories, llm)
+    assert result.em == 1.0
+    assert result.judge is None
 
 
 def make_result(category=4, em=1.0, f1=1.0, bleu1=1.0, judge=None):

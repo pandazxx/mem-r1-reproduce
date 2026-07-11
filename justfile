@@ -43,6 +43,15 @@ eval-val *ARGS: data
 eval-test *ARGS: data
     uv run python scripts/run_eval.py --split test {{ARGS}}
 
+# Offline val eval of a local model (GPU box or Apple Silicon; uv sync --extra train)
+# e.g. just eval-local --model Qwen/Qwen2.5-3B-Instruct --adapter outputs/grpo-answer-qwen3b
+eval-local *ARGS: data
+    uv run python scripts/run_eval.py --split val --contexts artifacts/contexts/val.jsonl {{ARGS}}
+
+# Merge the trained LoRA into the base model; --push-repo <user/repo> uploads to HF Hub
+export-adapter *ARGS:
+    uv run python scripts/export_answer_adapter.py {{ARGS}}
+
 # Live smoke test of the configured provider (chat + embeddings + retrieval)
 smoke:
     uv run python -c "\

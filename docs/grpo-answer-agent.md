@@ -63,10 +63,31 @@ several reward/hyperparameter iterations.
 
 ## Eval plan (follow-up within M3)
 
-After training, rerun the M2 harness on the test split with the tuned model
-serving answers locally on the pod (transformers/vLLM `LLMFn` instead of the
-NIM API), judge stays on the API. Target: F1 above the frozen .352 with the
-same banks, retrieval, and prompts.
+After training, rerun the M2 harness with the tuned model serving answers
+locally (`memory_r1.local_llm.make_local_llm` — greedy decoding through the
+chat template). `scripts/run_eval.py --model <base> --adapter <lora>
+--contexts artifacts/contexts/val.jsonl` is fully offline: precomputed
+retrieval, no judge (rescore predictions via API later). Target: F1 above
+the frozen baseline with the same banks, retrieval, and prompts.
+
+## Running the trained model locally (Apple Silicon or any GPU)
+
+The adapter is ~120 MB — over GitHub's 100 MB file limit, so it is
+distributed via the HF Hub instead of this repo
+(`scripts/export_answer_adapter.py` merges the LoRA into the base model and
+pushes both; needs `HF_TOKEN`).
+
+On an 18 GB+ MacBook (bf16/fp16 model ≈ 7 GB):
+
+```bash
+uv sync --extra train           # torch installs fine on macOS arm64
+just eval-local --model Qwen/Qwen2.5-3B-Instruct --adapter <path-to-lora> --limit 5
+```
+
+Drop `--limit` for the full 81-QA val run (roughly 30–60 min on an M-series
+chip; runs on MPS automatically). For interactive play, point Ollama or
+`mlx-lm` at the merged model on the HF Hub — quantized runs are fine for
+demos but not for reported eval numbers (use bf16/fp16 for those).
 
 ## Risks
 
