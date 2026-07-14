@@ -5,10 +5,15 @@
 # survives the stop.
 #
 # Set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID to get a Telegram message when
-# the command finishes (skipped silently when unset).
+# the command finishes (skipped silently when unset). RunPod Secrets named
+# TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are picked up automatically via their
+# injected RUNPOD_SECRET_* env vars — no per-pod env mapping needed.
 #
 # Usage: pod_guard.sh <time-limit> <command...>     e.g. pod_guard.sh 3.5h uv run ...
 set -u
+
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-${RUNPOD_SECRET_TELEGRAM_BOT_TOKEN:-}}"
+TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-${RUNPOD_SECRET_TELEGRAM_CHAT_ID:-}}"
 
 if [ $# -lt 2 ]; then
     echo "usage: $0 <time-limit, e.g. 90m or 3.5h> <command...>" >&2
