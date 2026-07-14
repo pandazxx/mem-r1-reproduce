@@ -30,16 +30,18 @@ Repo scaffolding, Claude agent config, paper notes, plan.
 - Eval harness: F1, BLEU-1, LLM-as-a-Judge on LoCoMo test.
 - Result: test F1 .352 / BLEU-1 .291 / Judge .423 — above the paper's Mem0 row, below its RL row (see docs/experiments.md).
 
-### M3 — RL Answer Agent (Stage 2) — in progress
-- GRPO via TRL + LoRA on Qwen2.5-3B, single 24–48 GB pod (see docs/grpo-answer-agent.md).
-- Reward: EM vs gold. Memory distillation prompt format, identical to the M2 eval prompt.
+### M3 — RL Answer Agent (Stage 2) — done (2026-07-12, tag `m3`)
+- GRPO via TRL + LoRA on Qwen2.5-3B, single 32 GB pod (see docs/grpo-answer-agent.md).
+- EM reward (paper's) was a null result — sparse signal; F1-shaped reward
+  delivered the lift: val F1 .410 vs frozen .386 (see docs/experiments.md).
 - Retrieval contexts precomputed and committed so the GPU box needs no API access.
-- Target: measurable lift over M2 baseline.
 
-### M4 — RL Memory Manager (Stage 1)
-- The hard part: reward = frozen answerer's EM using the post-op memory bank.
-- Custom reward function wrapping bank state + frozen model inference.
-- Target: reproduce ablation direction (RL manager > vanilla manager).
+### M4 — RL Memory Manager (Stage 1) — in progress
+- The hard part: reward = frozen answerer's score using the post-op memory bank
+  (see docs/memory-manager-rl.md — single-op episodes anchored to QA evidence,
+  frozen-bank context splicing, F1-shaped reward).
+- Target: reproduce ablation direction (RL manager > vanilla manager); reduce
+  the 27% of val QA whose answers never reach the top-60 context.
 
 ### M5 — Faithful runs & write-up
 - Port to verl, PPO + GRPO, scale to 7B/8B on multi-GPU pod.
