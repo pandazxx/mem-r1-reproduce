@@ -14,17 +14,27 @@ fix it.
 ## The core problem: the reward is an environment
 
 The paper's reward for one memory operation is *downstream QA correctness of
-a frozen Answer Agent using the resulting bank*. Faithfully, that means every
-GRPO rollout replays a ~300-turn conversation into a bank and answers
-questions — far beyond a single-GPU budget. M4 makes three approximations,
-each stated so M5 (verl) can undo them:
+a frozen Answer Agent using the resulting bank*. The paper's own solution
+(Algorithm 1, §3.1 / Appendix B.2 of v5) is to precompute the environment
+into offline training tuples rather than replay whole conversations: for each
+dialogue turn, it builds a *temporal memory-bank snapshot from the previous
+50 turns with GPT-4o-mini*, packages it with the turn and any QA pairs linked
+to that turn, and stores the tuple. Only three things stay live inside the
+verl reward: apply the candidate op, re-run retrieval over the updated bank
+(top-30 per participant → 60), and run the frozen Answer Agent (EM reward) —
+affordable on their 4×H100s, not on one 32 GB card.
 
-1. **Single-op episodes anchored to QA evidence.** LoCoMo annotates each QA
-   with its evidence turns (`QAPair.evidence` dia_ids). An episode is: the
-   manager processes one evidence turn's extracted facts against the frozen
-   M1 bank, and is rewarded by how well the QA linked to that evidence is
-   answered afterwards. No multi-turn credit assignment (paper trains this
-   way too — ops are rewarded per-turn by outcome, not per-conversation).
+M4 keeps the paper's offline-tuple structure and makes three further
+approximations, each stated so M5 (verl) can undo them:
+
+1. **Single-op episodes anchored to QA evidence.** Same shape as the paper's
+   tuples: one turn + its linked QA, one operation per rollout, no multi-turn
+   credit assignment. The paper doesn't disclose how QAs are "linked to" a
+   turn; we use LoCoMo's `QAPair.evidence` dia_ids, the obvious candidate.
+   One deviation: our pre-op bank is the *full-conversation* M1 bank, not a
+   previous-50-turns snapshot. If UPDATE/DELETE targets prove too diluted,
+   entries carry session timestamps, so filtering the bank to "on or before
+   the evidence turn's session" cheaply approximates the paper's windowing.
 2. **Frozen-bank splicing instead of live retrieval.** The QA's top-60
    context is precomputed from the M1 bank (`artifacts/contexts/train.jsonl`,
    already committed). A candidate op edits that context directly:

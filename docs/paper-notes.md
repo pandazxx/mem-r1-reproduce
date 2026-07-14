@@ -11,6 +11,7 @@ Two agents, each fine-tuned with outcome-driven RL (no intermediate operation la
 - Input: new dialogue-turn information + retrieved related memories from an external memory bank (entries have unique IDs and temporal info).
 - Output: one memory operation — `ADD` / `UPDATE` / `DELETE` / `NOOP`.
 - Reward: downstream answer correctness — Exact Match of a **frozen** answer agent using the resulting memory bank.
+- Training data construction (Algorithm 1, v5): offline tuples, one per dialogue turn — a temporal memory-bank snapshot built by **GPT-4o-mini from the previous 50 turns**, plus the turn, plus QA pairs "linked to" that turn (linkage mechanism undisclosed; Appendix B.2). So no conversation replay per rollout: only op-apply → retrieval (top-30 per participant → 60) → frozen-answerer inference happen live inside the reward.
 
 ### Stage 2 — Answer Agent
 - Input: question + ~60 candidate memories retrieved via similarity-based RAG (Mem0-style retrieval).
