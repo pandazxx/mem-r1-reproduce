@@ -114,15 +114,9 @@ def _context_entries(context: list[dict]) -> list[MemoryEntry]:
     ]
 
 
-def manager_reward(
-    completion: str, episode: dict, answer_llm: LLMFn, *, metric: str = "f1"
-) -> float:
-    """Outcome reward for one Memory Manager completion.
-
-    parse ops -> splice the episode's precomputed context -> frozen Answer
-    Agent answers the linked question -> token-level metric vs gold.
-    Invalid JSON, unknown ops, or unknown ids score 0.
-    """
+def _spliced_answer_prompt(completion: str, episode: dict) -> str | None:
+    """The Answer Agent prompt after applying the completion's ops, or None
+    when the completion is invalid (bad JSON, unknown op, unknown id)."""
     try:
         operations = parse_operations(completion)
         spliced = splice_context(
@@ -132,22 +126,49 @@ def manager_reward(
             default_timestamp=episode["turn"]["date_time"],
         )
     except OperationError:
-        return 0.0
-    prompt = ANSWER_PROMPT.format(
+        return None
+    return ANSWER_PROMPT.format(
         memories=format_memories(_context_entries(spliced)), question=episode["question"]
     )
+
+
+def manager_reward(
+    completion: str, episode: dict, answer_llm: LLMFn, *, metric: str = "f1"
+) -> float:
+    """Outcome reward for one Memory Manager completion.
+
+    parse ops -> splice the episode's precomputed context -> frozen Answer
+    Agent answers the linked question -> token-level metric vs gold.
+    Invalid JSON, unknown ops, or unknown ids score 0.
+    """
+    prompt = _spliced_answer_prompt(completion, episode)
+    if prompt is None:
+        return 0.0
     prediction = parse_answer(answer_llm(prompt))
     return REWARD_METRICS[metric](prediction, episode["answer"])
 
 
-def make_manager_trl_reward(answer_llm: LLMFn, metric: str = "f1"):
-    """TRL reward function: completions + the dataset's ``episode`` column."""
+def make_manager_trl_reward(answer_batch, metric: str = "f1"):
+    """TRL reward function: completions + the dataset's ``episode`` column.
+
+    ``answer_batch`` maps a list of Answer Agent prompts to a list of raw
+    answers in one call, so the 8 reward generations per group run as one
+    batched forward pass instead of sequentially (~2x step time otherwise).
+    Invalid completions never reach the answerer and score 0.
+    """
 
     def reward(completions: list, episode: list[dict], **kwargs) -> list[float]:
-        return [
-            manager_reward(_completion_text(completion), ep, answer_llm, metric=metric)
-            for completion, ep in zip(completions, episode, strict=True)
-        ]
+        rewards = [0.0] * len(completions)
+        prompts, slots = [], []
+        for i, (completion, ep) in enumerate(zip(completions, episode, strict=True)):
+            prompt = _spliced_answer_prompt(_completion_text(completion), ep)
+            if prompt is not None:
+                prompts.append(prompt)
+                slots.append(i)
+        for i, raw in zip(slots, answer_batch(prompts) if prompts else [], strict=True):
+            prediction = parse_answer(raw)
+            rewards[i] = REWARD_METRICS[metric](prediction, episode[i]["answer"])
+        return rewards
 
     reward.__name__ = f"manager_reward_{metric}"
     return reward

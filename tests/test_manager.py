@@ -128,7 +128,10 @@ def test_manager_reward_noop_answers_from_frozen_context():
 
 
 def test_make_manager_trl_reward_batches_and_unwraps():
-    reward = make_manager_trl_reward(lambda p: "Answer: a red bike", metric="f1")
+    def answer_batch(prompts: list[str]) -> list[str]:
+        return ["Answer: a red bike"] * len(prompts)
+
+    reward = make_manager_trl_reward(answer_batch, metric="f1")
     completions = [
         [{"role": "assistant", "content": json.dumps({"operations": [{"operation": "NOOP"}]})}],
         "not json",
@@ -136,6 +139,29 @@ def test_make_manager_trl_reward_batches_and_unwraps():
     scores = reward(completions=completions, episode=[EPISODE, EPISODE], extra=[0, 0])
     assert scores == [1.0, 0.0]
     assert reward.__name__ == "manager_reward_f1"
+
+
+def test_make_manager_trl_reward_only_valid_completions_reach_answerer():
+    seen: list[list[str]] = []
+
+    def answer_batch(prompts: list[str]) -> list[str]:
+        seen.append(prompts)
+        return ["Answer: a red bike"] * len(prompts)
+
+    reward = make_manager_trl_reward(answer_batch, metric="f1")
+    noop = json.dumps({"operations": [{"operation": "NOOP"}]})
+    bad = json.dumps({"operations": [{"operation": "DELETE", "id": "999"}]})
+    scores = reward(completions=["garbage", noop, bad, noop], episode=[EPISODE] * 4)
+    assert scores == [0.0, 1.0, 0.0, 1.0]  # slot mapping survives invalid gaps
+    assert len(seen) == 1 and len(seen[0]) == 2  # one batched call, invalid never sent
+
+
+def test_make_manager_trl_reward_all_invalid_skips_answerer():
+    def answer_batch(prompts: list[str]) -> list[str]:
+        raise AssertionError("should not be called")
+
+    reward = make_manager_trl_reward(answer_batch, metric="f1")
+    assert reward(completions=["nope"], episode=[EPISODE]) == [0.0]
 
 
 def test_load_episodes_roundtrip(tmp_path):
