@@ -66,9 +66,17 @@ export-adapter *ARGS:
 # billing unattended. Outputs live on the network volume and survive the stop.
 # Optional: export TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for a done-notification.
 
-# GRPO training under the cost guard (last full run: 2h30m on a 32GB card)
+# GRPO training under the cost guard; picks the trainer from the config
+# (an `episodes:` key means the Memory Manager, otherwise the Answer Agent)
 pod-train CONFIG="configs/grpo-answer-qwen3b.yaml" LIMIT="3.5h":
-    bash scripts/pod_guard.sh {{LIMIT}} uv run python scripts/train_grpo_answer_agent.py --config {{CONFIG}}
+    #!/usr/bin/env bash
+    if grep -q '^episodes:' {{CONFIG}}; then
+        script=scripts/train_grpo_memory_manager.py
+    else
+        script=scripts/train_grpo_answer_agent.py
+    fi
+    echo "pod-train: $script --config {{CONFIG}} (limit {{LIMIT}})"
+    bash scripts/pod_guard.sh {{LIMIT}} uv run python "$script" --config {{CONFIG}}
 
 # Offline val eval of a trained adapter under the cost guard (~20-30 min on GPU)
 pod-eval ADAPTER="outputs/grpo-answer-qwen3b" LIMIT="1.5h": data
