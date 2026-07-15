@@ -31,6 +31,10 @@ banks: data
 contexts: data
     uv run python scripts/build_train_contexts.py
 
+# Build Memory Manager training episodes for train/val QA (M4, resumable)
+episodes: data
+    uv run python scripts/build_manager_episodes.py
+
 # GRPO-train the Answer Agent — GPU box only (uv sync --extra train first)
 train-answer *ARGS:
     uv run python scripts/train_grpo_answer_agent.py {{ARGS}}
