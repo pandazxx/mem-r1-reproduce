@@ -1,0 +1,36 @@
+# M4: GRPO Memory Manager — Qwen2.5-3B + LoRA on one 24–48 GB GPU.
+# Reward = frozen Answer Agent (same base weights, adapter disabled) token-F1
+# on the op-spliced context. See docs/memory-manager-rl.md.
+
+model: Qwen/Qwen2.5-3B-Instruct
+episodes: artifacts/episodes/train.jsonl
+reward_metric: f1 # EM (paper's) available for a faithfulness ablation
+answer_max_new_tokens: 256
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  task_type: CAUSAL_LM
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+grpo:
+  output_dir: outputs/grpo-manager-qwen3b
+  num_train_epochs: 3
+  learning_rate: 1.0e-5
+  # settings inherited from the M3 runs that fit 24-32 GB; manager prompts are
+  # much shorter, but the reward adds 8 greedy answer generations per step
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8
+  num_generations: 8
+  generation_batch_size: 8
+  max_completion_length: 256
+  temperature: 0.9
+  beta: 0.04
+  bf16: true
+  gradient_checkpointing: true
+  logging_steps: 1
+  save_strategy: steps
+  save_steps: 25
+  save_total_limit: 2
+  report_to: none

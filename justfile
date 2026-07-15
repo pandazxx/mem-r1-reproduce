@@ -39,6 +39,10 @@ episodes: data
 train-answer *ARGS:
     uv run python scripts/train_grpo_answer_agent.py {{ARGS}}
 
+# GRPO-train the Memory Manager — GPU box only (uv sync --extra train first)
+train-manager *ARGS:
+    uv run python scripts/train_grpo_memory_manager.py {{ARGS}}
+
 # Frozen-baseline eval on the validation split (81 QA, ~25 min on NIM)
 eval-val *ARGS: data
     uv run python scripts/run_eval.py --split val {{ARGS}}
