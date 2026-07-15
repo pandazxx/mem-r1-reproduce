@@ -19,22 +19,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def make_frozen_answer_llm(holder: dict, max_new_tokens: int):
-    """Answer with the policy's base weights (LoRA disabled), greedy.
+def make_frozen_answer_batch(holder: dict, max_new_tokens: int):
+    """Batch-answer with the policy's base weights (LoRA disabled), greedy.
 
     ``holder`` is filled in after the trainer instantiates the model —
-    the reward function is constructed first, so it late-binds.
+    the reward function is constructed first, so it late-binds. All prompts
+    of a reward call (one per completion in the group) run as a single
+    left-padded generate, roughly halving step time vs sequential calls.
     """
     import torch
 
-    def llm(prompt: str) -> str:
+    def answer_batch(prompts: list[str]) -> list[str]:
         model, tokenizer = holder["model"], holder["tokenizer"]
-        inputs = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
-            add_generation_prompt=True,
-            return_tensors="pt",
-            return_dict=True,
-        ).to(model.device)
+        texts = [
+            tokenizer.apply_chat_template(
+                [{"role": "user", "content": p}], add_generation_prompt=True, tokenize=False
+            )
+            for p in prompts
+        ]
+        previous_side = tokenizer.padding_side
+        tokenizer.padding_side = "left"  # right padding corrupts decoder-only generation
+        try:
+            inputs = tokenizer(texts, return_tensors="pt", padding=True, add_special_tokens=False)
+        finally:
+            tokenizer.padding_side = previous_side
+        inputs = inputs.to(model.device)
         was_training = model.training
         model.eval()
         try:
@@ -48,11 +57,10 @@ def make_frozen_answer_llm(holder: dict, max_new_tokens: int):
         finally:
             if was_training:
                 model.train()
-        return tokenizer.decode(
-            output[0, inputs["input_ids"].shape[1] :], skip_special_tokens=True
-        ).strip()
+        generated = output[:, inputs["input_ids"].shape[1] :]
+        return [tokenizer.decode(g, skip_special_tokens=True).strip() for g in generated]
 
-    return llm
+    return answer_batch
 
 
 def main() -> None:
@@ -82,10 +90,10 @@ def main() -> None:
     print(f"model: {config['model']}, {len(dataset)} training episodes")
 
     holder: dict = {}
-    answer_llm = make_frozen_answer_llm(holder, config.get("answer_max_new_tokens", 256))
+    answer_batch = make_frozen_answer_batch(holder, config.get("answer_max_new_tokens", 256))
     trainer = GRPOTrainer(
         model=config["model"],
-        reward_funcs=make_manager_trl_reward(answer_llm, config["reward_metric"]),
+        reward_funcs=make_manager_trl_reward(answer_batch, config["reward_metric"]),
         args=GRPOConfig(**config["grpo"]),
         train_dataset=dataset,
         peft_config=LoraConfig(**config["lora"]),
