@@ -176,3 +176,26 @@ def make_manager_trl_reward(answer_batch, metric: str = "f1"):
 
 def load_episodes(path: str | Path) -> list[dict]:
     return [json.loads(line) for line in Path(path).read_text().splitlines()]
+
+
+def apply_operations(
+    bank, operations: list[MemoryOperation], *, default_timestamp: str | None = None
+) -> tuple[int, int]:
+    """Apply parsed ops to a real MemoryBank, skipping invalid ones.
+
+    Used by the bank rebuild: ADDs default to the turn's timestamp; ops that
+    fail (unknown id, e.g. after an earlier DELETE) are skipped, not fatal.
+    Returns (applied, skipped).
+    """
+    from dataclasses import replace
+
+    applied = skipped = 0
+    for op in operations:
+        if op.op == "ADD" and op.timestamp is None:
+            op = replace(op, timestamp=default_timestamp)
+        try:
+            bank.apply(op)
+            applied += 1
+        except OperationError:
+            skipped += 1
+    return applied, skipped
