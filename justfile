@@ -31,9 +31,17 @@ banks: data
 contexts: data
     uv run python scripts/build_train_contexts.py
 
+# Build Memory Manager training episodes for train/val QA (M4, resumable)
+episodes: data
+    uv run python scripts/build_manager_episodes.py
+
 # GRPO-train the Answer Agent — GPU box only (uv sync --extra train first)
 train-answer *ARGS:
     uv run python scripts/train_grpo_answer_agent.py {{ARGS}}
+
+# GRPO-train the Memory Manager — GPU box only (uv sync --extra train first)
+train-manager *ARGS:
+    uv run python scripts/train_grpo_memory_manager.py {{ARGS}}
 
 # Frozen-baseline eval on the validation split (81 QA, ~25 min on NIM)
 eval-val *ARGS: data
