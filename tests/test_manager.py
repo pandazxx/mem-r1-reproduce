@@ -168,3 +168,22 @@ def test_load_episodes_roundtrip(tmp_path):
     path = tmp_path / "train.jsonl"
     path.write_text(json.dumps(EPISODE) + "\n")
     assert load_episodes(path) == [EPISODE]
+
+
+def test_apply_operations_defaults_add_timestamp_and_skips_invalid():
+    from memory_r1.manager import apply_operations
+    from memory_r1.memory_bank import MemoryBank
+
+    bank = MemoryBank()
+    kept = bank.add("Caroline bought a blue bike", timestamp="8 May 2023")
+    ops = [
+        MemoryOperation(op="ADD", text="Caroline rides daily"),
+        MemoryOperation(op="UPDATE", id=kept.id, text="Caroline has a red bike"),
+        MemoryOperation(op="DELETE", id="404"),  # unknown -> skipped, not fatal
+        MemoryOperation(op="NOOP"),
+    ]
+    applied, skipped = apply_operations(bank, ops, default_timestamp="10 May 2023")
+    assert (applied, skipped) == (3, 1)
+    assert bank.get(kept.id).text == "Caroline has a red bike"
+    added = [e for e in bank.entries if e.text == "Caroline rides daily"]
+    assert added[0].timestamp == "10 May 2023"

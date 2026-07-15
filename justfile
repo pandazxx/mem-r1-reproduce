@@ -35,6 +35,10 @@ contexts: data
 episodes: data
     uv run python scripts/build_manager_episodes.py
 
+# Precompute manager inputs for every dialogue turn (M4 bank rebuild, resumable, ~6h on NIM)
+turn-inputs: data
+    uv run python scripts/build_turn_inputs.py
+
 # GRPO-train the Answer Agent — GPU box only (uv sync --extra train first)
 train-answer *ARGS:
     uv run python scripts/train_grpo_answer_agent.py {{ARGS}}

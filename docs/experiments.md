@@ -90,6 +90,17 @@ Append-only. For each run: config, cost, wall-clock, results.
   - Note the frozen Qwen-3B (local, greedy) already beats the M2 frozen llama-8b-via-NIM val baseline on F1 (.392 vs .377) — model/back-end differences matter as much as RL here; keep comparisons within the same inference path.
   - Next lever: rerun with `reward_metric: f1` (shaped reward, ~every step carries gradient) as a new config (`configs/grpo-answer-qwen3b-f1.yaml`), ~$2–3 on the same 32 GB pod (network volume kept alive). If still flat, raise lr or LoRA r before questioning the approach.
 
+## 2026-07-16 — GRPO Memory Manager training (M4, first full run)
+
+- **Config**: `configs/grpo-manager-qwen3b.yaml` — Qwen2.5-3B + LoRA r16, TRL GRPOTrainer, 230 evidence-anchored episodes (`artifacts/episodes/train.jsonl`), spliced-context reward: frozen Answer Agent (same base weights, adapter disabled, batched generation) token-F1 on the linked QA. 3 epochs = 345 steps.
+- **Hardware**: RunPod RTX PRO 4500 32 GB, run self-service via `just pod-train` (after the PR #12 dispatch fix; the earlier crash cost ~1 min of pod time and proved the cost guard).
+- **Cost**: train_runtime 13,830 s = 3 h 50 m ≈ $2.85 (~40 s/step; the reward's 8 answer generations run as one batched forward pass — sequential was ~90 s/step, PR #11).
+- **Output**: adapter in `outputs/grpo-manager-qwen3b/` on the network volume.
+- **Training signal** (from the log tail; full history in the checkpoint's `trainer_state.json`, not yet pulled):
+  - Late-training **entropy collapse**: final steps show entropy 0.01–0.05 and `reward_std = 0` / `frac_reward_zero_std = 1` — at T=0.9 all 8 samples per prompt were identical, so epoch-3 steps carried no gradient. The policy settled on a deterministic op pattern well before the end.
+  - Whether that pattern is *useful* (learned edits) or *degenerate* (e.g. always the same op) is not decidable from training telemetry — the proxy eval decides.
+- **Next**: `scripts/eval_manager_episodes.py` on the 127 val episodes (manager ops vs NOOP baseline, same GPU, ~15 min) as go/no-go; if go, `scripts/rebuild_banks_with_manager.py` + context rebuild + banks A/B (docs/memory-manager-rl.md eval plan).
+
 ## 2026-07-12 — GRPO rerun with F1-shaped reward: first real lift (M3)
 
 - **Config**: `configs/grpo-answer-qwen3b-f1.yaml` — single-variable change vs the EM run: `reward_metric: f1`. Everything else identical (Qwen2.5-3B + LoRA r16, TRL 1.8, 3 epochs, 228 steps, effective batch 16, 8 generations, T=0.9, β=0.04).
