@@ -5,8 +5,14 @@ with the gold answer and the retrieved memories. GRPO training (M3) then
 runs on a GPU box with no API keys or rate limits.
 
 Resumable per question: existing records are kept and skipped on rerun.
+
+For the M4 banks A/B, point --banks at the RL-managed banks and --out at a
+separate directory, e.g.:
+    build_train_contexts.py --banks artifacts/memory_banks_rl \
+        --out artifacts/contexts_rl --splits val
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -20,22 +26,26 @@ from memory_r1.providers import get_provider, make_embedder
 from memory_r1.retrieval import DEFAULT_TOP_K, Retriever
 
 ROOT = Path(__file__).resolve().parents[1]
-BANKS = ROOT / "artifacts" / "memory_banks"
-OUT = ROOT / "artifacts" / "contexts"
-SPLITS = ("train", "val")
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--banks", default="artifacts/memory_banks")
+    parser.add_argument("--out", default="artifacts/contexts")
+    parser.add_argument("--splits", nargs="+", default=["train", "val"])
+    args = parser.parse_args()
+
     provider = get_provider()
     print(f"provider: {provider.name} ({provider.embedding_model})")
     retriever = Retriever(make_embedder(provider))
-    banks = {p.stem: MemoryBank.load(p) for p in sorted(BANKS.glob("*.json"))}
+    banks = {p.stem: MemoryBank.load(p) for p in sorted((ROOT / args.banks).glob("*.json"))}
     splits = make_splits(load_locomo(ROOT / "data" / "locomo10.json"))
-    OUT.mkdir(parents=True, exist_ok=True)
+    out_dir = ROOT / args.out
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    for split in SPLITS:
+    for split in args.splits:
         qa_pairs = getattr(splits, split)
-        dest = OUT / f"{split}.jsonl"
+        dest = out_dir / f"{split}.jsonl"
         done = set()
         if dest.exists():
             for line in dest.read_text().splitlines():
