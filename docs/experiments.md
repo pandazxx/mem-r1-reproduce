@@ -101,6 +101,18 @@ Append-only. For each run: config, cost, wall-clock, results.
   - Whether that pattern is *useful* (learned edits) or *degenerate* (e.g. always the same op) is not decidable from training telemetry — the proxy eval decides.
 - **Next**: `scripts/eval_manager_episodes.py` on the 127 val episodes (manager ops vs NOOP baseline, same GPU, ~15 min) as go/no-go; if go, `scripts/rebuild_banks_with_manager.py` + context rebuild + banks A/B (docs/memory-manager-rl.md eval plan).
 
+## 2026-07-16 — Memory Manager proxy eval: beats NOOP baseline on val episodes (M4)
+
+- **Config**: `scripts/eval_manager_episodes.py`, 127 val episodes, manager adapter (greedy) vs NOOP baseline, frozen answerer = same base with adapter disabled. Pod GPU, 7 min, ~$0.10.
+- **Output**: `artifacts/eval/manager-proxy-val/summary.json` (full rows in `outputs/manager-eval-val.json` on the pod volume).
+- **Results**: mean reward **0.368 vs 0.329 NOOP** (+3.9 F1 points, +12% relative); 26 wins / 24 losses / 77 ties vs NOOP per episode.
+- **Op distribution**: ADD 401 (92%), UPDATE 26, DELETE 3, NOOP 5, INVALID 1 — ~3.2 ADDs/episode ≈ one per extracted fact.
+- **Reading**:
+  - The entropy collapse seen in training settled on a *simple but reward-aligned* policy: re-ADD the turn's facts as memories. Under the splice semantics that pushes evidence directly into the QA context — precisely the mechanism that attacks the 27%-coverage gap. Not degenerate (UPDATEs/DELETEs still appear), but not sophisticated consolidation either.
+  - Near-balanced wins/losses (26/24) with a positive mean: wins are larger than losses; 61% of episodes tie (edits didn't change the answer).
+  - **Transfer caveat for the bank rebuild**: the proxy injects ADDs straight into the context; in the real A/B the re-ADDed facts must *win top-60 retrieval* to matter (they're near-duplicates of M1 entries, so ranking is plausible but not guaranteed). The rebuild A/B measures exactly this.
+- **Verdict**: go for the bank rebuild (~$2). If the A/B shows the ADD-bias washes out, next lever is an entropy bonus / higher temperature to escape the early collapse and reach UPDATE/consolidation behavior (the paper's qualitative claim).
+
 ## 2026-07-12 — GRPO rerun with F1-shaped reward: first real lift (M3)
 
 - **Config**: `configs/grpo-answer-qwen3b-f1.yaml` — single-variable change vs the EM run: `reward_metric: f1`. Everything else identical (Qwen2.5-3B + LoRA r16, TRL 1.8, 3 epochs, 228 steps, effective batch 16, 8 generations, T=0.9, β=0.04).
