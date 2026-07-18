@@ -1,0 +1,15 @@
+{
+  "n": 127,
+  "mean_reward": 0.3677518370818354,
+  "mean_noop_reward": 0.3289981954814237,
+  "wins_vs_noop": 26,
+  "losses_vs_noop": 24,
+  "ties": 77,
+  "op_counts": {
+    "ADD": 401,
+    "UPDATE": 26,
+    "NOOP": 5,
+    "DELETE": 3,
+    "INVALID": 1
+  }
+}
