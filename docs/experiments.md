@@ -90,6 +90,28 @@ Append-only. For each run: config, cost, wall-clock, results.
   - Note the frozen Qwen-3B (local, greedy) already beats the M2 frozen llama-8b-via-NIM val baseline on F1 (.392 vs .377) — model/back-end differences matter as much as RL here; keep comparisons within the same inference path.
   - Next lever: rerun with `reward_metric: f1` (shaped reward, ~every step carries gradient) as a new config (`configs/grpo-answer-qwen3b-f1.yaml`), ~$2–3 on the same 32 GB pod (network volume kept alive). If still flat, raise lr or LoRA r before questioning the approach.
 
+## 2026-07-12 — GRPO rerun with F1-shaped reward: first real lift (M3)
+
+- **Config**: `configs/grpo-answer-qwen3b-f1.yaml` — single-variable change vs the EM run: `reward_metric: f1`. Everything else identical (Qwen2.5-3B + LoRA r16, TRL 1.8, 3 epochs, 228 steps, effective batch 16, 8 generations, T=0.9, β=0.04).
+- **Hardware**: RunPod RTX PRO 4500 32 GB, run self-service by the user via `just pod-train` (cost guard auto-stopped the pod + Telegram ping — first real-pod exercise of both).
+- **Cost**: train_runtime 8,519 s = 2 h 22 m ≈ $1.75. Eval (both models, same pod) ≈ $0.50.
+- **Training signal**: shaping worked as designed — `frac_reward_zero_std` mostly 0 (vs 66% zero-signal steps under EM); per-step KL 0.006–0.43 (vs 0.003 final KL under EM). The policy actually moved this time.
+- **Output**: adapter in `outputs/grpo-answer-qwen3b-f1/` on the network volume (export to HF Hub pending).
+- **Eval** (val n=81, both models on the same pod/CUDA/bf16/greedy path; `artifacts/eval/pod-qwen3b-{f1,frozen}-val/`):
+
+  | Model | EM | F1 | BLEU-1 | multi-hop F1 (16) | temporal F1 (13) | open-domain F1 (3) | single-hop F1 (49) |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | Frozen Qwen2.5-3B | 0.198 | 0.386 | 0.347 | 0.305 | 0.407 | 0.000 | 0.431 |
+  | GRPO F1-reward | 0.198 | **0.410** | **0.364** | 0.303 | 0.462 | 0.000 | 0.456 |
+
+- **Verdict: +2.4 F1 / +1.7 BLEU-1 overall (+6% relative)** — the first positive RL result of the reproduction. Gains concentrated in temporal (+.054) and single-hop (+.026); multi-hop flat; EM unchanged (the reward shaped answers *toward* gold tokens without producing more exact matches).
+- **Notes**:
+  - Confirms the null-result diagnosis: reward sparsity, not lr/LoRA capacity, was the bottleneck. One variable changed, KL rose ~100×, F1 followed.
+  - Backend variance check: frozen F1 is .386 on CUDA/bf16 vs .392 on MPS/fp16 — ~.006 of greedy-decoding drift between backends, which is why both models must share an inference path. The +.024 lift is ~4× that noise floor.
+  - EM-trained adapter (val F1 .379) < frozen < F1-trained (.410): reward choice alone swings ~3 F1 points on this budget.
+  - Still short of the paper's relative lift (LLaMA-8B, verl, full test split) — but the mechanism now demonstrably works at 3B/TRL/$2 scale.
+  - Next: export adapter to HF Hub, judge rescore (gpt-4o-mini) of both prediction sets, then decide between test-split eval of this adapter vs. moving to M4 (Memory Manager RL).
+
 ## 2026-07-16 — GRPO Memory Manager training (M4, first full run)
 
 - **Config**: `configs/grpo-manager-qwen3b.yaml` — Qwen2.5-3B + LoRA r16, TRL GRPOTrainer, 230 evidence-anchored episodes (`artifacts/episodes/train.jsonl`), spliced-context reward: frozen Answer Agent (same base weights, adapter disabled, batched generation) token-F1 on the linked QA. 3 epochs = 345 steps.
@@ -113,24 +135,25 @@ Append-only. For each run: config, cost, wall-clock, results.
   - **Transfer caveat for the bank rebuild**: the proxy injects ADDs straight into the context; in the real A/B the re-ADDed facts must *win top-60 retrieval* to matter (they're near-duplicates of M1 entries, so ranking is plausible but not guaranteed). The rebuild A/B measures exactly this.
 - **Verdict**: go for the bank rebuild (~$2). If the A/B shows the ADD-bias washes out, next lever is an entropy bonus / higher temperature to escape the early collapse and reach UPDATE/consolidation behavior (the paper's qualitative claim).
 
-## 2026-07-12 — GRPO rerun with F1-shaped reward: first real lift (M3)
+## 2026-07-19 — Banks A/B: RL-managed banks vs M1 banks (M4 final eval)
 
-- **Config**: `configs/grpo-answer-qwen3b-f1.yaml` — single-variable change vs the EM run: `reward_metric: f1`. Everything else identical (Qwen2.5-3B + LoRA r16, TRL 1.8, 3 epochs, 228 steps, effective batch 16, 8 generations, T=0.9, β=0.04).
-- **Hardware**: RunPod RTX PRO 4500 32 GB, run self-service by the user via `just pod-train` (cost guard auto-stopped the pod + Telegram ping — first real-pod exercise of both).
-- **Cost**: train_runtime 8,519 s = 2 h 22 m ≈ $1.75. Eval (both models, same pod) ≈ $0.50.
-- **Training signal**: shaping worked as designed — `frac_reward_zero_std` mostly 0 (vs 66% zero-signal steps under EM); per-step KL 0.006–0.43 (vs 0.003 final KL under EM). The policy actually moved this time.
-- **Output**: adapter in `outputs/grpo-answer-qwen3b-f1/` on the network volume (export to HF Hub pending).
-- **Eval** (val n=81, both models on the same pod/CUDA/bf16/greedy path; `artifacts/eval/pod-qwen3b-{f1,frozen}-val/`):
+- **Config**: full pipeline on one pod session — `rebuild_banks_with_manager.py` (all 5,882 turns through the trained manager, batched greedy ops, applied in turn order to copies of the M1 banks), `build_train_contexts.py --banks artifacts/memory_banks_rl --out artifacts/contexts_rl --splits val` (NIM), then `run_eval.py` for both answerers on the RL contexts (CUDA/bf16/greedy — same path as the 2026-07-12 M1-bank numbers).
+- **Output**: `artifacts/memory_banks_rl/` (committed), `artifacts/contexts_rl/val.jsonl`, `artifacts/eval/qwen3b-{frozen,f1}-rlbanks-val/`.
+- **Cost**: ≈ $2.60 pod time total (including $0.75 for a first attempt that finished the rebuild but died on a missing `NVIDIA_API_KEY` at the context step; everything resumable, nothing lost).
+- **Bank stats**: 16,094 → **29,755 entries (1.85×)** — the ADD-heavy policy nearly doubled the banks (per-conversation ops ≈ 92% ADD, few UPDATEs, ~0 DELETEs, matching the proxy eval distribution).
+- **Results** — the completed A/B grid (val n=81, overall F1, same CUDA path):
 
-  | Model | EM | F1 | BLEU-1 | multi-hop F1 (16) | temporal F1 (13) | open-domain F1 (3) | single-hop F1 (49) |
-  | --- | --- | --- | --- | --- | --- | --- | --- |
-  | Frozen Qwen2.5-3B | 0.198 | 0.386 | 0.347 | 0.305 | 0.407 | 0.000 | 0.431 |
-  | GRPO F1-reward | 0.198 | **0.410** | **0.364** | 0.303 | 0.462 | 0.000 | 0.456 |
+  | Answerer \ Banks | M1 banks | RL banks |
+  | --- | --- | --- |
+  | Frozen Qwen2.5-3B | 0.386 | 0.367 |
+  | GRPO F1-reward agent | **0.410** | 0.387 |
 
-- **Verdict: +2.4 F1 / +1.7 BLEU-1 overall (+6% relative)** — the first positive RL result of the reproduction. Gains concentrated in temporal (+.054) and single-hop (+.026); multi-hop flat; EM unchanged (the reward shaped answers *toward* gold tokens without producing more exact matches).
-- **Notes**:
-  - Confirms the null-result diagnosis: reward sparsity, not lr/LoRA capacity, was the bottleneck. One variable changed, KL rose ~100×, F1 followed.
-  - Backend variance check: frozen F1 is .386 on CUDA/bf16 vs .392 on MPS/fp16 — ~.006 of greedy-decoding drift between backends, which is why both models must share an inference path. The +.024 lift is ~4× that noise floor.
-  - EM-trained adapter (val F1 .379) < frozen < F1-trained (.410): reward choice alone swings ~3 F1 points on this budget.
-  - Still short of the paper's relative lift (LLaMA-8B, verl, full test split) — but the mechanism now demonstrably works at 3B/TRL/$2 scale.
-  - Next: export adapter to HF Hub, judge rescore (gpt-4o-mini) of both prediction sets, then decide between test-split eval of this adapter vs. moving to M4 (Memory Manager RL).
+  Per-category (F1-agent): single-hop **.456 → .493 (+.037)**, multi-hop **.239 → .132 (−.107)**, temporal .462 → .390, open-domain 0 → 0. The frozen answerer shows the same pattern (single-hop .431 → .473, multi-hop .305 → .094).
+
+- **Verdict: the RL-managed banks *hurt* overall (−2 F1 for both answerers).** The proxy-eval gain did not survive real retrieval. Mechanism, cleanly split by category:
+  - **Coverage barely moved**: QA with <50% gold-token coverage in the top-60 went 22 → 20 of 81. The ADDs mostly *duplicated* facts already in the bank instead of filling gaps.
+  - **Dilution is real**: 1.85× bank size means duplicates crowd the top-60. Single-hop questions *benefit* (their fact appears more often → +3.7 F1); multi-hop questions are crushed (they need many *distinct* facts in context → −10.7 F1).
+  - The M3 Answer-Agent lift is robust across bank types (+2.4 on M1, +2.0 on RL banks) — the two stages are independent, as designed.
+- **Interpretation**: this *reproduces the paper's qualitative ablation in reverse* — the paper claims a good manager consolidates (UPDATE) where naive managers duplicate (ADD), and our entropy-collapsed ADD-policy demonstrates exactly the failure mode that claim implies. The mechanism (op → bank → retrieval → answer → reward) works end-to-end; the *policy* is what needs improvement.
+- **Next levers** (in order): (1) entropy bonus / higher sampling temperature to escape the early collapse; (2) penalize bank growth in the reward (e.g. small per-ADD cost) to push toward UPDATE/NOOP; (3) the paper's 50-turn windowed pre-op bank so UPDATE targets are less diluted. Each is a ~$3 rerun on the existing infra.
+- **M4 total spend**: ≈ $6.20 (training $2.85 + proxy $0.35 + A/B $2.60 + failed-launch pennies).
