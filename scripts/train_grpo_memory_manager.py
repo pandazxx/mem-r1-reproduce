@@ -93,7 +93,12 @@ def main() -> None:
     answer_batch = make_frozen_answer_batch(holder, config.get("answer_max_new_tokens", 256))
     trainer = GRPOTrainer(
         model=config["model"],
-        reward_funcs=make_manager_trl_reward(answer_batch, config["reward_metric"]),
+        reward_funcs=make_manager_trl_reward(
+            answer_batch,
+            config["reward_metric"],
+            cap=config.get("context_cap"),
+            add_penalty=config.get("add_penalty", 0.0),
+        ),
         args=GRPOConfig(**config["grpo"]),
         train_dataset=dataset,
         peft_config=LoraConfig(**config["lora"]),
