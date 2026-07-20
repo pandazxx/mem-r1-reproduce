@@ -103,6 +103,42 @@ Baseline subtlety: `NOOP` reproduces the frozen-bank answer, so the manager
 is rewarded only for ops that *beat* what the M1 bank already achieves —
 the ablation comparison is built into the group baseline.
 
+### Reward v2 (issue #17, after the first A/B)
+
+The v1 reward over-credited `ADD`: it appended the new memory to a context
+that already held the top-60, giving it guaranteed visibility that real
+retrieval never grants — and the trained policy duly collapsed to ~92% ADD,
+grew the banks 1.85×, and *lost* 2 F1 in the real A/B (dilution). Two fixes,
+both in `manager.py` and enabled by config:
+
+- **`context_cap: 60`** — the spliced context is capped at top-k size; an
+  ADD now *displaces the weakest retrieved memory* instead of extending the
+  context, matching what post-op retrieval would actually see.
+- **`add_penalty: 0.01`** — a small bank-growth cost per ADD, so ADD must
+  beat UPDATE/NOOP by more than a rounding error to be preferred.
+
+## Eval semantics: postprocessor vs true manager (issue #17)
+
+Two distinct rebuild semantics, both supported by
+`scripts/rebuild_banks_with_manager.py --mode {edit,construct}`:
+
+- **Postprocessor eval** (`edit`): ops are applied on top of the *completed
+  M1 bank*. `NOOP` cannot keep an M1 fact out of memory, and `ADD` stacks
+  duplicates onto M1 extraction. This is what the first A/B (2026-07-19)
+  measured — it evaluates *M1-plus-manager-edits*, and is favorable to the
+  M1 baseline.
+- **True-manager eval** (`construct`): the bank starts *empty* and the
+  manager is the source of truth — `NOOP` means the fact is never stored;
+  `UPDATE`/`DELETE` targets resolve to the constructed entry holding the
+  same text (unresolved when the manager never stored it). This is the
+  headline M4 comparison going forward.
+
+Raw manager ops are persisted per conversation (`artifacts/manager_ops/`),
+so both rebuilds replay offline from one GPU pass, and
+`scripts/manager_diagnostics.py` reports op distribution, bank growth,
+duplicate rates, top-60 gold coverage, distinct-memory counts, and
+per-category F1 for any (banks, contexts, eval) triple.
+
 ## Training config
 
 `configs/grpo-manager-qwen3b.yaml`, same shape as M3: 3 epochs, effective

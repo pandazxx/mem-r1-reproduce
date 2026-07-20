@@ -157,3 +157,12 @@ Append-only. For each run: config, cost, wall-clock, results.
 - **Interpretation**: this *reproduces the paper's qualitative ablation in reverse* — the paper claims a good manager consolidates (UPDATE) where naive managers duplicate (ADD), and our entropy-collapsed ADD-policy demonstrates exactly the failure mode that claim implies. The mechanism (op → bank → retrieval → answer → reward) works end-to-end; the *policy* is what needs improvement.
 - **Next levers** (in order): (1) entropy bonus / higher sampling temperature to escape the early collapse; (2) penalize bank growth in the reward (e.g. small per-ADD cost) to push toward UPDATE/NOOP; (3) the paper's 50-turn windowed pre-op bank so UPDATE targets are less diluted. Each is a ~$3 rerun on the existing infra.
 - **M4 total spend**: ≈ $6.20 (training $2.85 + proxy $0.35 + A/B $2.60 + failed-launch pennies).
+
+## 2026-07-20 — M4 eval-semantics correction + v2 plan (issue #17)
+
+- **Correction to the 2026-07-19 entry**: that A/B is a **postprocessor eval** — the rebuild applied manager ops *on top of the completed M1 banks*, so `NOOP` could not keep an M1 fact out of memory and `ADD` stacked duplicates onto M1 extraction. It measures *M1-plus-manager-edits*, which is favorable to the M1 baseline and not a true manager-constructed bank. The −2 F1 verdict stands for that semantics, but M4 claims should use the **true-manager eval** (bank starts empty; the manager decides storage) — now supported via `rebuild_banks_with_manager.py --mode construct`.
+- **Reward fixes** (training/proxy no longer over-credit ADD):
+  - `context_cap: 60` — spliced reward contexts are capped; an ADD displaces the weakest retrieved memory instead of getting a free extra slot real top-60 retrieval would not grant.
+  - `add_penalty: 0.01` — per-ADD bank-growth cost.
+- **New tooling**: raw manager ops persisted to `artifacts/manager_ops/` (one GPU pass → both rebuild modes replay offline); `scripts/manager_diagnostics.py` (op distribution, growth ratio, exact/near-duplicate rates, top-60 gold coverage, distinct-in-top-60, per-category F1).
+- **v2 rerun plan**: `configs/grpo-manager-qwen3b-v2.yaml` — cap + penalty + **1 epoch** (v1 entropy-collapsed early; extra epochs bought nothing). ~115 steps ≈ 1.3 h ≈ $1 on the 32 GB pod. Same model/LoRA — no scale-up until reward semantics are validated.

@@ -170,6 +170,66 @@ def test_load_episodes_roundtrip(tmp_path):
     assert load_episodes(path) == [EPISODE]
 
 
+def test_splice_cap_add_displaces_weakest_retrieved():
+    ops = [MemoryOperation(op="ADD", text="new fact")]
+    spliced = splice_context(CONTEXT, ops, valid_ids=VALID_IDS, default_timestamp="t", cap=2)
+    # top-ranked original stays, weakest ("7") is displaced by the ADD
+    assert [m["text"] for m in spliced] == ["Caroline bought a blue bike", "new fact"]
+
+
+def test_splice_cap_noop_within_capacity_is_unchanged():
+    spliced = splice_context(CONTEXT, [MemoryOperation(op="NOOP")], valid_ids=VALID_IDS, cap=60)
+    assert spliced == CONTEXT
+
+
+def test_splice_cap_truncates_excess_adds():
+    ops = [MemoryOperation(op="ADD", text=f"fact {i}") for i in range(4)]
+    spliced = splice_context(CONTEXT, ops, valid_ids=VALID_IDS, default_timestamp="t", cap=3)
+    assert [m["text"] for m in spliced] == ["fact 0", "fact 1", "fact 2"]
+
+
+def test_manager_reward_add_penalty():
+    completion = json.dumps(
+        {"operations": [{"operation": "ADD", "text": "x"}, {"operation": "ADD", "text": "y"}]}
+    )
+    reward = manager_reward(
+        completion, EPISODE, lambda p: "Answer: a red bike", metric="f1", add_penalty=0.01
+    )
+    assert reward == pytest.approx(1.0 - 0.02)
+
+
+def test_trl_reward_applies_cap_and_penalty():
+    def answer_batch(prompts):
+        assert all("evicted" not in p for p in prompts)  # cap removed the weakest entry
+        return ["Answer: a red bike"] * len(prompts)
+
+    episode = dict(EPISODE)
+    episode["context"] = CONTEXT + [{"id": "9", "text": "evicted lore", "timestamp": None}]
+    reward = make_manager_trl_reward(answer_batch, metric="f1", cap=3, add_penalty=0.01)
+    add = json.dumps({"operations": [{"operation": "ADD", "text": "new"}]})
+    scores = reward(completions=[add], episode=[episode])
+    assert scores == [pytest.approx(0.99)]
+
+
+def test_construct_bank_manager_is_source_of_truth():
+    from memory_r1.manager import construct_bank
+    from memory_r1.memory_bank import MemoryBank
+
+    m1 = MemoryBank()
+    kept = m1.add("Caroline bought a blue bike", timestamp="8 May")
+    m1.add("Melanie lives in a big city", timestamp="9 May")  # manager never stores this
+
+    turn_ops = [
+        ("8 May", [MemoryOperation(op="ADD", text="Caroline bought a blue bike")]),
+        ("9 May", [MemoryOperation(op="NOOP")]),  # Melanie fact skipped entirely
+        ("10 May", [MemoryOperation(op="UPDATE", id=kept.id, text="Caroline has a red bike")]),
+        ("11 May", [MemoryOperation(op="DELETE", id="1")]),  # never stored -> unresolved
+    ]
+    bank, stats = construct_bank(m1, turn_ops)
+    assert [e.text for e in bank.entries] == ["Caroline has a red bike"]
+    assert stats["ADD"] == 1 and stats["NOOP"] == 1 and stats["unresolved"] == 1
+
+
 def test_apply_operations_defaults_add_timestamp_and_skips_invalid():
     from memory_r1.manager import apply_operations
     from memory_r1.memory_bank import MemoryBank

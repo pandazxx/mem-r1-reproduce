@@ -29,7 +29,15 @@ def main() -> None:
     parser.add_argument("--out", default="outputs/manager-eval-val.json")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--limit", type=int, help="only the first N episodes (smoke)")
+    parser.add_argument(
+        "--cap",
+        type=int,
+        default=60,
+        help="context size cap: ADDs displace the weakest retrieved memories "
+        "instead of extending the context (0 = uncapped, the pre-issue-#17 semantics)",
+    )
     args = parser.parse_args()
+    cap = args.cap or None
 
     from memory_r1.answer_agent import parse_answer
     from memory_r1.local_llm import make_local_batch_llm
@@ -57,9 +65,9 @@ def main() -> None:
             except OperationError:
                 op_counts["INVALID"] += 1
             for kind, source in (("managed", completion), ("noop", NOOP_COMPLETION)):
-                prompt = _spliced_answer_prompt(source, ep)
-                if prompt is not None:
-                    answer_prompts.append(prompt)
+                result = _spliced_answer_prompt(source, ep, cap=cap)
+                if result is not None:
+                    answer_prompts.append(result[0])
                     slots.append((i, kind))
         answers = generate(answer_prompts, use_adapter=False)
         scores: dict[tuple[int, str], float] = {}
